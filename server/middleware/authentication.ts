@@ -25,6 +25,38 @@ declare global {
   }
 }
 
+interface CachedAuthContext {
+  expiresAt: number;
+  user: UserAccount;
+  memberships: ClubMembership[];
+  followedClubIds: string[];
+}
+
+const AUTH_CACHE_TTL_MS = 30_000;
+const AUTH_CACHE_MAX_SIZE = 1000;
+const authContextCache = new Map<string, CachedAuthContext>();
+
+export function invalidateAuthContextCache(userOrAuthId?: string): void {
+  if (!userOrAuthId) {
+    authContextCache.clear();
+    return;
+  }
+  authContextCache.delete(userOrAuthId);
+  for (const [key, entry] of authContextCache.entries()) {
+    if (entry.user.id === userOrAuthId) {
+      authContextCache.delete(key);
+    }
+  }
+}
+
+function setCachedAuthContext(authUserId: string, entry: CachedAuthContext): void {
+  if (authContextCache.size >= AUTH_CACHE_MAX_SIZE) {
+    const oldestKey = authContextCache.keys().next().value;
+    if (oldestKey) authContextCache.delete(oldestKey);
+  }
+  authContextCache.set(authUserId, entry);
+}
+
 export function createAuthenticationMiddleware(adapter: DataAdapter) {
   const isDemoAdapter = adapter.getPersistenceMode() === 'in_memory_demo';
   const isTestRunner = env.nodeEnv === 'test' || Boolean(process.env.VITEST);
@@ -85,13 +117,22 @@ export function createAuthenticationMiddleware(adapter: DataAdapter) {
         );
       }
 
-      // 2. Production / PostgreSQL Supabase JWT verification (single-transaction context resolution)
+      // 2. Production / PostgreSQL Supabase JWT verification
       const claims = await verifySupabaseAccessToken(token);
+
+      // Bypass cache on /auth/me or /auth/logout so explicit profile refreshes always fetch fresh DB state
+      const bypassCache = req.path === '/api/v1/auth/me' || req.path === '/api/v1/auth/logout';
+      const cached = !bypassCache ? authContextCache.get(claims.authUserId) : undefined;
+
       let user: UserAccount;
       let memberships: ClubMembership[];
       let followedClubIds: string[];
 
-      if (adapter.resolveAuthenticatedContext) {
+      if (cached && cached.expiresAt > Date.now()) {
+        user = cached.user;
+        memberships = cached.memberships;
+        followedClubIds = cached.followedClubIds;
+      } else if (adapter.resolveAuthenticatedContext) {
         const resolved = await adapter.resolveAuthenticatedContext({
           authUserId: claims.authUserId,
           email: claims.email,
@@ -104,6 +145,12 @@ export function createAuthenticationMiddleware(adapter: DataAdapter) {
         user = resolved.user;
         memberships = resolved.memberships;
         followedClubIds = resolved.followedClubIds;
+        setCachedAuthContext(claims.authUserId, {
+          expiresAt: Date.now() + AUTH_CACHE_TTL_MS,
+          user,
+          memberships,
+          followedClubIds,
+        });
       } else {
         user = await adapter.provisionAuthenticatedUser({
           authUserId: claims.authUserId,
@@ -120,9 +167,20 @@ export function createAuthenticationMiddleware(adapter: DataAdapter) {
         ]);
         memberships = m;
         followedClubIds = f.map((x) => x.clubId);
+        setCachedAuthContext(claims.authUserId, {
+          expiresAt: Date.now() + AUTH_CACHE_TTL_MS,
+          user,
+          memberships,
+          followedClubIds,
+        });
+      }
+
+      if (req.path === '/api/v1/auth/logout') {
+        invalidateAuthContextCache(claims.authUserId);
       }
 
       if (user.status === 'suspended') {
+        invalidateAuthContextCache(claims.authUserId);
         return next(new ForbiddenError('Your account has been suspended by administration'));
       }
 

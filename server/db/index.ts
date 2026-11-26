@@ -14,7 +14,10 @@ const SLOW_QUERY_THRESHOLD_MS = 250;
 let runtimeClient: postgres.Sql | null = null;
 let runtimeDb: AppDatabase | null = null;
 
-export function createDbPool(connectionString: string, maxConnections = 10): {
+export function createDbPool(
+  connectionString: string,
+  maxConnections = process.env.VERCEL ? 3 : 10,
+): {
   client: postgres.Sql;
   db: AppDatabase;
 } {
@@ -85,7 +88,12 @@ export async function withRlsTransaction<T>(
   try {
     const existingTx = activeTxStorage.getStore();
     if (existingTx) {
-      if (overrideContext) {
+      const needsContextSwitch =
+        overrideContext !== undefined &&
+        (ctx.userId !== (baseCtx.userId ?? '') ||
+          ctx.globalRole !== (baseCtx.globalRole ?? 'public'));
+
+      if (needsContextSwitch) {
         await existingTx.execute(
           sql`SELECT set_config('app.current_user_id', ${ctx.userId}, true), set_config('app.current_global_role', ${ctx.globalRole}, true)`,
         );
@@ -112,6 +120,37 @@ export async function withRlsTransaction<T>(
           operation: operationName,
           durationMs,
           requestId: ctx.requestId || null,
+        }),
+      );
+    }
+  }
+}
+
+/**
+ * Lightweight single-round-trip read helper for strictly anonymous public reads (`globalRole === 'public'`).
+ * Avoids BEGIN / set_config / COMMIT overhead when no user identity context is required.
+ */
+export async function withPublicRead<T>(
+  operationName: string,
+  fn: (db: AppDatabase) => Promise<T>,
+): Promise<T> {
+  const existingTx = activeTxStorage.getStore();
+  if (existingTx) {
+    return fn(existingTx as unknown as AppDatabase);
+  }
+  const db = getDb();
+  const startedAt = performance.now();
+  try {
+    return await fn(db);
+  } finally {
+    const durationMs = Math.round(performance.now() - startedAt);
+    if (durationMs >= SLOW_QUERY_THRESHOLD_MS) {
+      console.warn(
+        JSON.stringify({
+          level: 'warn',
+          event: 'slow_db_public_read',
+          operation: operationName,
+          durationMs,
         }),
       );
     }
