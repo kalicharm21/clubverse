@@ -24,6 +24,7 @@ import type {
   TicketReleaseSummary,
   TicketStatus,
 } from '../../../shared/types/domain.ts';
+import crypto from 'node:crypto';
 import {MAX_FOLLOWED_CLUBS} from '../../config/constants.ts';
 import {publicReadCache} from '../../shared/cache/publicReadCache.ts';
 import {
@@ -38,6 +39,7 @@ import {
   unsealTicketToken,
 } from '../../shared/utils/crypto.ts';
 import {withRlsTransaction} from '../index.ts';
+import {dbRequestContext} from '../requestContext.ts';
 import {
   attendanceRecords,
   auditLogs,
@@ -2078,22 +2080,38 @@ export class OperationsRepository {
   }
 
   async appendAuditLog(entry: Omit<AuditLogEntry, 'id' | 'createdAt'>): Promise<AuditLogEntry> {
-    return withRlsTransaction('audit.append', async (tx) => {
-      const [inserted] = await tx
-        .insert(auditLogs)
-        .values({
-          actorUserId: isUuid(entry.actorId) ? entry.actorId : null,
-          actorName: entry.actorName,
-          actorContext: entry.actorContext,
-          action: entry.action,
-          targetType: entry.targetType,
-          targetId: entry.targetId,
-          targetLabel: entry.targetLabel,
-          metadata: {details: entry.details},
-        })
-        .returning();
-      return mapAuditLogRow(inserted);
+    const id = crypto.randomUUID();
+    const createdAt = new Date();
+    const requestId = dbRequestContext.get().requestId ?? null;
+
+    await withRlsTransaction('audit.append', async (tx) => {
+      await tx.insert(auditLogs).values({
+        id,
+        actorUserId: isUuid(entry.actorId) ? entry.actorId : null,
+        actorName: entry.actorName,
+        actorContext: entry.actorContext,
+        action: entry.action,
+        targetType: entry.targetType,
+        targetId: entry.targetId,
+        targetLabel: entry.targetLabel,
+        requestId,
+        metadata: {details: entry.details},
+        createdAt,
+      });
     });
+
+    return {
+      id,
+      actorId: entry.actorId,
+      actorName: entry.actorName,
+      actorContext: entry.actorContext,
+      action: entry.action,
+      targetType: entry.targetType,
+      targetId: entry.targetId,
+      targetLabel: entry.targetLabel,
+      details: entry.details,
+      createdAt: createdAt.toISOString(),
+    };
   }
 
   async getSystemSettings(): Promise<SystemSettings> {
