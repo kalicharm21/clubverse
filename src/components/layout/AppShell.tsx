@@ -1,4 +1,5 @@
 import React, {useMemo, useState} from 'react';
+import {flushSync} from 'react-dom';
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
 import {
   Award,
@@ -179,23 +180,31 @@ export const AppShell: React.FC = () => {
 
   const handleContextSelection = (value: string) => {
     if (value === 'student') {
-      switchContext('student');
+      flushSync(() => {
+        switchContext('student');
+      });
       navigate('/app/student/dashboard');
       setMobileNavOpen(false);
       return;
     }
     if (value === 'super_admin') {
-      switchContext('super_admin');
+      flushSync(() => {
+        switchContext('super_admin');
+      });
       navigate('/app/admin/dashboard');
       setMobileNavOpen(false);
       return;
     }
     const [role, clubId] = value.split(':');
     if (isClubOfficerRole(role) && clubId) {
-      switchContext('club_admin', clubId);
+      flushSync(() => {
+        switchContext('club_admin', clubId);
+      });
       navigate('/app/club-admin/dashboard');
     } else if (role === 'core_member' && clubId) {
-      switchContext('core_member', clubId);
+      flushSync(() => {
+        switchContext('core_member', clubId);
+      });
       navigate('/app/core/dashboard');
     }
     setMobileNavOpen(false);

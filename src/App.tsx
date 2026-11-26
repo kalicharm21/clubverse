@@ -174,7 +174,7 @@ export function AppRoutes() {
           <Route
             path="student/dashboard"
             element={
-              <RequireContextRoute allowedContexts={['student']}>
+              <RequireContextRoute allowedContexts={['student', 'club_admin', 'core_member']}>
                 <StudentDashboardPage />
               </RequireContextRoute>
             }
@@ -182,7 +182,7 @@ export function AppRoutes() {
           <Route
             path="student/clubs"
             element={
-              <RequireContextRoute allowedContexts={['student']}>
+              <RequireContextRoute allowedContexts={['student', 'club_admin', 'core_member']}>
                 <ExploreClubsPage />
               </RequireContextRoute>
             }
@@ -190,7 +190,7 @@ export function AppRoutes() {
           <Route
             path="student/clubs/:clubId"
             element={
-              <RequireContextRoute allowedContexts={['student']}>
+              <RequireContextRoute allowedContexts={['student', 'club_admin', 'core_member']}>
                 <ClubDetailsPage />
               </RequireContextRoute>
             }
@@ -198,7 +198,7 @@ export function AppRoutes() {
           <Route
             path="student/hall-of-fame"
             element={
-              <RequireContextRoute allowedContexts={['student']}>
+              <RequireContextRoute allowedContexts={['student', 'club_admin', 'core_member']}>
                 <HallOfFamePage />
               </RequireContextRoute>
             }
@@ -206,7 +206,7 @@ export function AppRoutes() {
           <Route
             path="student/events"
             element={
-              <RequireContextRoute allowedContexts={['student']}>
+              <RequireContextRoute allowedContexts={['student', 'club_admin', 'core_member']}>
                 <EventsPage />
               </RequireContextRoute>
             }
@@ -214,7 +214,7 @@ export function AppRoutes() {
           <Route
             path="student/events/:eventId"
             element={
-              <RequireContextRoute allowedContexts={['student']}>
+              <RequireContextRoute allowedContexts={['student', 'club_admin', 'core_member']}>
                 <EventDetailsPage />
               </RequireContextRoute>
             }
@@ -222,7 +222,7 @@ export function AppRoutes() {
           <Route
             path="student/registrations"
             element={
-              <RequireContextRoute allowedContexts={['student']}>
+              <RequireContextRoute allowedContexts={['student', 'club_admin', 'core_member']}>
                 <MyRegistrationsPage />
               </RequireContextRoute>
             }
@@ -230,12 +230,11 @@ export function AppRoutes() {
           <Route
             path="student/settings"
             element={
-              <RequireContextRoute allowedContexts={['student']}>
+              <RequireContextRoute allowedContexts={['student', 'club_admin', 'core_member']}>
                 <StudentSettingsPage />
               </RequireContextRoute>
             }
           />
-
           {/* Club Officer (President & Vice President) Experience */}
           <Route
             path="club-admin/dashboard"
