@@ -31,7 +31,8 @@ export const CameraQrScanner: React.FC<CameraQrScannerProps> = ({
     stop: () => Promise<void>;
     clear: () => void;
   } | null>(null);
-  const startingRef = useRef(false);
+  const mountedRef = useRef(true);
+  const sessionTokenRef = useRef(0);
   const lastScanRef = useRef<{token: string; at: number}>({token: '', at: 0});
   const onScanRef = useRef(onScanToken);
 
@@ -39,14 +40,36 @@ export const CameraQrScanner: React.FC<CameraQrScannerProps> = ({
     onScanRef.current = onScanToken;
   }, [onScanToken]);
 
+  const releaseAllVideoTracks = useCallback(() => {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const videos = container.querySelectorAll('video');
+    videos.forEach((video) => {
+      const stream = video.srcObject as MediaStream | null;
+      if (stream) {
+        stream.getTracks().forEach((track) => {
+          try {
+            track.stop();
+          } catch {
+            // Ignore track stop errors
+          }
+        });
+        video.srcObject = null;
+      }
+    });
+  }, [containerId]);
+
   const stopScanner = useCallback(async () => {
+    // Increment session token so any in-flight startScanner() aborts immediately
+    sessionTokenRef.current += 1;
     const inst = scannerRef.current;
     scannerRef.current = null;
+
     if (inst) {
       try {
         await inst.stop();
       } catch {
-        // Already stopped
+        // Already stopped or never started
       }
       try {
         inst.clear();
@@ -54,43 +77,42 @@ export const CameraQrScanner: React.FC<CameraQrScannerProps> = ({
         // Ignore DOM cleanup noise
       }
     }
-    setScanning(false);
-  }, []);
+
+    releaseAllVideoTracks();
+    if (mountedRef.current) {
+      setScanning(false);
+      setStarting(false);
+    }
+  }, [releaseAllVideoTracks]);
 
   const startScanner = useCallback(
     async (overrideCameraId?: string) => {
-      if (startingRef.current) return;
-      startingRef.current = true;
+      await stopScanner();
+      const mySession = ++sessionTokenRef.current;
+
       setErrorMsg(null);
       setStarting(true);
 
       try {
+        if (typeof window !== 'undefined' && !window.isSecureContext) {
+          throw new Error('Insecure context: camera requires HTTPS or localhost.');
+        }
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          throw new Error(
-            'Camera API unavailable. Ensure the app is loaded over HTTPS or localhost.',
-          );
+          throw new Error('Browser mediaDevices.getUserMedia API is unavailable.');
         }
 
-        await stopScanner();
         const {Html5Qrcode} = await import('html5-qrcode');
-
-        let targetCameraId = overrideCameraId || selectedCameraId;
-        if (!targetCameraId) {
-          const listed = await Html5Qrcode.getCameras().catch(() => []);
-          if (listed.length > 0) {
-            setCameras(listed);
-            const backCam = listed.find((c) => /back|rear|environment/i.test(c.label));
-            targetCameraId = backCam?.id || listed[0].id;
-            setSelectedCameraId(targetCameraId);
-          }
-        }
+        if (sessionTokenRef.current !== mySession || !mountedRef.current) return;
 
         const instance = new Html5Qrcode(containerId, {verbose: false});
         scannerRef.current = instance;
 
         const scanConfig = {
           fps: 10,
-          qrbox: {width: 220, height: 220},
+          qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+            const edge = Math.max(140, Math.min(240, Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.7)));
+            return {width: edge, height: edge};
+          },
         };
 
         const onDecoded = (decodedText: string) => {
@@ -105,16 +127,22 @@ export const CameraQrScanner: React.FC<CameraQrScannerProps> = ({
         };
 
         const onFrameError = () => {
-          // Expected when no QR code is in frame
+          // Expected per-frame miss while aiming
         };
 
-        const candidates: Array<string | MediaTrackConstraints> = targetCameraId
-          ? [targetCameraId, {facingMode: 'environment'}, {facingMode: 'user'}]
+        // Prefer facingMode constraints first so mobile phones & laptops open immediately without pre-enumeration issues
+        const candidates: Array<string | MediaTrackConstraints> = overrideCameraId
+          ? [overrideCameraId, {facingMode: 'environment'}, {facingMode: 'user'}]
           : [{facingMode: 'environment'}, {facingMode: 'user'}];
 
         let started = false;
         let lastErr: unknown = null;
+
         for (const candidate of candidates) {
+          if (sessionTokenRef.current !== mySession || !mountedRef.current) {
+            await stopScanner();
+            return;
+          }
           try {
             await instance.start(candidate, scanConfig, onDecoded, onFrameError);
             started = true;
@@ -125,41 +153,66 @@ export const CameraQrScanner: React.FC<CameraQrScannerProps> = ({
         }
 
         if (!started) {
-          throw lastErr instanceof Error ? lastErr : new Error('Unable to open video stream');
+          throw lastErr instanceof Error ? lastErr : new Error('Unable to open camera stream');
         }
+
+        // If user clicked Close/Stop while camera was initializing, shut it down right away
+        if (sessionTokenRef.current !== mySession || !mountedRef.current) {
+          await stopScanner();
+          return;
+        }
+
+        // Enumerate devices now that permission & active stream are granted (enables front/back switch on phones)
+        Html5Qrcode.getCameras()
+          .then((listed) => {
+            if (!mountedRef.current || sessionTokenRef.current !== mySession) return;
+            const valid = listed.filter((c) => Boolean(c.id));
+            setCameras(valid);
+            if (overrideCameraId) {
+              setSelectedCameraId(overrideCameraId);
+            } else if (valid.length > 0 && !selectedCameraId) {
+              const back = valid.find((c) => /back|rear|environment/i.test(c.label));
+              setSelectedCameraId(back?.id || valid[0].id);
+            }
+          })
+          .catch(() => {
+            // Non-fatal if device enumeration is restricted
+          });
 
         setScanning(true);
       } catch (err) {
+        if (sessionTokenRef.current !== mySession || !mountedRef.current) return;
         await stopScanner();
-        const raw = err instanceof Error ? err.message : 'Unable to start device camera';
+        const raw = err instanceof Error ? err.message : String(err || 'Unable to start camera');
         if (/permission|notallowed|denied/i.test(raw)) {
           setErrorMsg(
-            'Camera permission was denied. Allow camera access in browser site settings and click Retry.',
+            'Camera permission was denied. Enable Camera in your browser site settings and tap Retry.',
           );
-        } else if (/notreadable|in use|could not start video source/i.test(raw)) {
+        } else if (/notreadable|in use|could not start video source|trackstart/i.test(raw)) {
           setErrorMsg(
-            'Camera is busy in another app or tab (such as Google Meet/Zoom). Close that tab and click Retry.',
+            'Camera is busy in another app or tab (e.g., Google Meet/Zoom). Close it and tap Retry.',
           );
         } else if (/notfound|no camera|requested device not found/i.test(raw)) {
-          setErrorMsg(
-            'No active camera was detected on this device. Use the manual QR token entry below.',
-          );
+          setErrorMsg('No camera hardware detected on this device. Use manual QR token entry below.');
         } else {
-          setErrorMsg(`Camera scanner unavailable (${raw}). Manual QR verification remains ready.`);
+          setErrorMsg(`Camera scanner error: ${raw}`);
         }
       } finally {
-        startingRef.current = false;
-        setStarting(false);
+        if (mountedRef.current && sessionTokenRef.current === mySession) {
+          setStarting(false);
+        }
       }
     },
     [containerId, selectedCameraId, stopScanner],
   );
 
   useEffect(() => {
+    mountedRef.current = true;
     if (autoStart && !disabled) {
       void startScanner();
     }
     return () => {
+      mountedRef.current = false;
       void stopScanner();
     };
   }, [autoStart, disabled, startScanner, stopScanner]);
@@ -174,14 +227,15 @@ export const CameraQrScanner: React.FC<CameraQrScannerProps> = ({
               aria-label="Select camera device"
               value={selectedCameraId}
               onChange={(e) => {
-                setSelectedCameraId(e.target.value);
-                void startScanner(e.target.value);
+                const nextId = e.target.value;
+                setSelectedCameraId(nextId);
+                void startScanner(nextId);
               }}
               className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700"
             >
-              {cameras.map((cam) => (
+              {cameras.map((cam, idx) => (
                 <option key={cam.id} value={cam.id}>
-                  {cam.label || `Camera ${cam.id.slice(0, 6)}`}
+                  {cam.label || `Camera ${idx + 1}`}
                 </option>
               ))}
             </select>
@@ -212,11 +266,11 @@ export const CameraQrScanner: React.FC<CameraQrScannerProps> = ({
         </div>
       </div>
 
-      {/* Keep non-zero width even before scanning=true so html5-qrcode measures valid dimensions */}
+      {/* Always keep full width and non-zero height while starting or scanning so mobile & desktop video streams render */}
       <div
         id={containerId}
-        className={`w-full overflow-hidden rounded-lg border border-slate-200 bg-slate-900 transition-all ${
-          scanning ? 'min-h-[240px] opacity-100' : 'h-0 border-0 opacity-0 pointer-events-none'
+        className={`w-full overflow-hidden rounded-lg border border-slate-200 bg-slate-900 ${
+          scanning || starting ? 'min-h-[260px]' : 'h-0 border-0 opacity-0 pointer-events-none'
         }`}
       />
 
