@@ -1,0 +1,1418 @@
+# CAMPUSVERSE — PHASE 2
+# PRODUCTION DATABASE INTEGRATION, PERSISTENCE & DATA ARCHITECTURE
+
+## ROLE AND EXPECTATIONS
+
+You are acting as a Principal Software Architect, Senior PostgreSQL Engineer, Senior Backend Engineer, Application Security Engineer and Senior QA Engineer.
+
+You are continuing the existing CampusVerse project.
+
+Phase 1 has already established the modular monolith, frontend, backend domains, API contracts, role-specific UI foundations, security middleware and an isolated in-memory demo adapter.
+
+Your responsibility in Phase 2 is to replace the temporary data architecture with a real, secure, persistent PostgreSQL-backed data architecture.
+
+This is not a new project.
+
+Do not recreate the application from scratch.
+
+Do not redesign the existing UI unnecessarily.
+
+Do not delete working Phase 1 functionality.
+
+Inspect the actual repository before making changes.
+
+Your highest priorities are:
+
+1. Data integrity.
+2. Persistent storage.
+3. Database security.
+4. Correct authorization.
+5. Transactional correctness.
+6. Performance.
+7. Backward compatibility.
+8. Maintainability.
+9. Comprehensive testing.
+10. Accurate documentation.
+
+---
+
+# PART 1 — EXISTING PROJECT BASELINE
+
+The existing CampusVerse implementation contains:
+
+- React 19.
+- TypeScript.
+- Vite.
+- Tailwind CSS.
+- Express modular monolith.
+- Zod validation.
+- Existing API contracts.
+- Thirteen backend domain foundations.
+- Role-specific application interfaces.
+- An isolated in-memory demo adapter.
+- PWA infrastructure.
+- Vitest tests.
+- Playwright tests.
+
+Previously reported verification:
+
+- TypeScript: passed.
+- Production build: passed.
+- Vitest: 11/11.
+- Playwright: 3/3.
+- Development server: port 3000.
+- Health and manifest endpoints: HTTP 200.
+
+These results are the historical baseline, not permission to assume the current workspace is unchanged.
+
+First inspect the actual implementation and rerun the relevant tests.
+
+## Known limitations to resolve
+
+1. Application state is currently in memory.
+2. Data resets after server restarts.
+3. Supabase Auth integration is not yet complete.
+4. Development authentication still exists.
+5. QR functionality is simulated/manual.
+6. Database persistence is not implemented.
+
+Do not conceal these limitations.
+
+---
+
+# PART 2 — ARCHITECTURE LOCK
+
+The following architecture remains mandatory.
+
+## Frontend
+
+- React 19.
+- TypeScript.
+- Vite.
+- Tailwind CSS.
+- Existing component architecture.
+- Existing routing.
+- Existing API client.
+
+## Backend
+
+- Node.js 22.
+- Express.
+- TypeScript.
+- Modular monolith.
+- Versioned REST API.
+- Existing service and repository boundaries.
+
+## Database
+
+- Supabase PostgreSQL.
+- Drizzle ORM.
+- drizzle-kit.
+- PostgreSQL constraints.
+- Explicit SQL migrations.
+- Connection pooling.
+
+## Authentication
+
+- Supabase Auth.
+- Verified institutional email.
+- Server-side JWT verification.
+- Internal application user records.
+- Server-side authorization.
+
+## Validation
+
+- Existing Zod schemas.
+- Shared API contracts.
+- Backend validation at every mutation boundary.
+
+## Architecture flow
+
+Browser/PWA
+→ Express REST API
+→ Authentication middleware
+→ Authorization middleware
+→ Domain service
+→ Repository interface
+→ PostgreSQL adapter
+→ Drizzle ORM
+→ Supabase PostgreSQL.
+
+The browser must never access business tables directly.
+
+The Express backend remains the authoritative business API.
+
+Do not introduce Firestore, Firebase, MongoDB, Neon, Prisma or another competing persistence system.
+
+Do not introduce microservices.
+
+---
+
+# PART 3 — FIRST TASK: REPOSITORY AUDIT
+
+Before modifying anything:
+
+1. Inspect package.json.
+2. Inspect the existing directory structure.
+3. Inspect all thirteen backend domains.
+4. Inspect the existing data adapter interface.
+5. Inspect the in-memory adapter.
+6. Inspect every existing repository.
+7. Inspect API routes and service layers.
+8. Inspect Zod schemas and shared contracts.
+9. Inspect authentication middleware.
+10. Inspect role and permission checks.
+11. Inspect existing tests.
+12. Inspect README.md and all documentation.
+
+Identify:
+
+- Which interfaces can be retained.
+- Which interfaces require modification.
+- Which domains are currently connected to in-memory data.
+- Which operations are not yet implemented.
+- Which schema relationships are missing.
+- Which existing assumptions conflict with PostgreSQL.
+
+Produce a short internal implementation plan and then proceed.
+
+Do not stop after producing the plan.
+
+Do not replace working abstractions simply to introduce a new pattern.
+
+---
+
+# PART 4 — DATA ACCESS ARCHITECTURE
+
+## 4.1 Adapter architecture
+
+Preserve the existing data adapter abstraction if it is suitable.
+
+The objective is:
+
+- InMemoryDataAdapter: development/demo/test only.
+- PostgresDataAdapter: real application persistence.
+
+The production application must use PostgresDataAdapter.
+
+The demo adapter must never silently become the production fallback.
+
+If DATABASE_URL is missing in production:
+
+- Fail startup clearly.
+- Do not initialize empty in-memory state.
+- Do not report successful database readiness.
+- Do not return fake records.
+
+A missing database configuration must be an explicit startup error.
+
+## 4.2 Repository design
+
+Use domain-oriented repositories.
+
+Suggested responsibilities:
+
+- UserRepository.
+- ClubRepository.
+- MembershipRepository.
+- FollowRepository.
+- EventRepository.
+- FormRepository.
+- SubmissionRepository.
+- RegistrationRepository.
+- AttendanceRepository.
+- ReportRepository.
+- FinanceRepository.
+- NotificationRepository.
+- AuditRepository.
+- SettingsRepository.
+
+Repositories should not contain HTTP response logic.
+
+Controllers should not contain raw SQL.
+
+Domain services must own business rules.
+
+The database adapter must own persistence implementation.
+
+## 4.3 Transaction architecture
+
+Implement transaction support in the persistence layer.
+
+The following operations must use transactions:
+
+- User provisioning.
+- Club membership assignment.
+- Club follow limit enforcement.
+- Event registration.
+- Registration capacity allocation.
+- QR attendance verification.
+- Event report submission.
+- Financial record creation.
+- Financial report approval.
+- Administrative role changes.
+- Audit logging for privileged mutations.
+
+Use PostgreSQL transactions, constraints and appropriate locking.
+
+Do not depend on frontend validation for data integrity.
+
+---
+
+# PART 5 — DATABASE SCHEMA
+
+Design a normalized PostgreSQL schema.
+
+Use UUID primary keys, foreign keys, appropriate indexes, UTC timestamps and explicit constraints.
+
+Use consistent naming conventions.
+
+Use numeric types for financial amounts.
+
+Never use floating-point types for monetary values.
+
+The schema must support multiple clubs and multiple administrators without assuming one user belongs to only one club.
+
+## TABLE 1 — users
+
+Fields:
+
+- id UUID primary key.
+- auth_user_id UUID unique.
+- email.
+- normalized_email.
+- display_name.
+- avatar_url nullable.
+- global_role.
+- account_status.
+- email_verified_at.
+- created_at.
+- updated_at.
+
+Global roles:
+
+- user.
+- super_admin.
+
+Account statuses:
+
+- active.
+- suspended.
+- disabled.
+
+Constraints:
+
+- Unique normalized email.
+- Unique Supabase Auth user ID.
+- Valid role values.
+- Valid account status.
+
+Supabase Auth remains the password and identity provider.
+
+Never store plaintext passwords.
+
+## TABLE 2 — clubs
+
+Fields:
+
+- id.
+- name.
+- slug.
+- description.
+- logo_url nullable.
+- status.
+- created_at.
+- updated_at.
+
+Statuses:
+
+- active.
+- inactive.
+- archived.
+
+Enforce unique slugs.
+
+## TABLE 3 — club_memberships
+
+Fields:
+
+- id.
+- user_id.
+- club_id.
+- membership_role.
+- permissions.
+- status.
+- assigned_by.
+- created_at.
+- updated_at.
+
+Membership roles:
+
+- admin.
+- core_member.
+
+A user may belong to multiple clubs.
+
+A club may have multiple administrators and core members.
+
+Enforce unique user-club membership.
+
+Permission values must be validated against an explicit allowlist.
+
+Possible permissions:
+
+- manage_events.
+- manage_forms.
+- view_registrations.
+- manage_registrations.
+- scan_qr.
+- submit_event_reports.
+- view_financial_records.
+- manage_club_settings.
+
+Super Admin authority is separate from club membership.
+
+## TABLE 4 — club_follows
+
+Fields:
+
+- id.
+- user_id.
+- club_id.
+- created_at.
+
+Enforce:
+
+- Unique user-club follow.
+- Foreign keys to users and clubs.
+- Indexes for user and club lookup.
+
+IMPORTANT BUSINESS RULE:
+
+A student can follow a maximum of two clubs.
+
+Enforce this in the database transaction layer, not merely in the frontend.
+
+Concurrent requests must not allow a user to follow three clubs.
+
+Use appropriate locking or a database-side transactional function.
+
+Follow counts must be calculated from authoritative records or maintained through a transactionally consistent counter strategy.
+
+Do not allow client-supplied follower counts.
+
+## TABLE 5 — events
+
+Fields:
+
+- id.
+- club_id.
+- title.
+- slug.
+- description.
+- location.
+- start_at.
+- end_at.
+- registration_open_at.
+- registration_close_at.
+- capacity nullable.
+- registration_count or an appropriately derived count.
+- status.
+- created_by.
+- created_at.
+- updated_at.
+
+Statuses:
+
+- draft.
+- published.
+- registration_open.
+- registration_closed.
+- completed.
+- cancelled.
+
+Ensure event ownership is associated with a club.
+
+Enforce sensible date relationships.
+
+Do not implement an event gallery.
+
+## TABLE 6 — event_forms
+
+Fields:
+
+- id.
+- event_id.
+- title.
+- description.
+- version.
+- status.
+- created_by.
+- published_at.
+- created_at.
+- updated_at.
+
+An event may have one or more explicitly versioned form definitions, but a registration must reference the exact version it used.
+
+## TABLE 7 — form_fields
+
+Fields:
+
+- id.
+- form_id.
+- field_key.
+- label.
+- field_type.
+- required.
+- position.
+- validation_rules.
+- options.
+- created_at.
+- updated_at.
+
+Support future field types:
+
+- short_text.
+- long_text.
+- email.
+- phone.
+- number.
+- single_choice.
+- multiple_choice.
+- dropdown.
+- checkbox.
+- date.
+- time.
+- file_upload.
+
+Validate field definitions server-side.
+
+Prevent duplicate field keys within a form version.
+
+Do not allow arbitrary executable validation rules.
+
+Do not dynamically execute submitted JSON.
+
+## TABLE 8 — event_registrations
+
+Fields:
+
+- id.
+- event_id.
+- user_id.
+- form_id.
+- form_version.
+- registration_number.
+- registration_status.
+- submitted_at.
+- created_at.
+- updated_at.
+
+Statuses:
+
+- confirmed.
+- waitlisted.
+- cancelled.
+
+Constraints:
+
+- Unique event-user registration.
+- Unique registration number.
+- Valid foreign keys.
+
+The user identity comes from the verified server-side session.
+
+Never trust a user_id submitted by the browser.
+
+## TABLE 9 — form_submissions
+
+Fields:
+
+- id.
+- registration_id.
+- form_id.
+- form_version.
+- submitted_by.
+- response_data JSONB.
+- submitted_at.
+- updated_at.
+
+Store structured responses in JSONB while preserving relational identity.
+
+Validate each answer against the exact published form version.
+
+Do not allow arbitrary field injection.
+
+A form submission must not be changed into a different form version after submission.
+
+## TABLE 10 — attendance_tickets
+
+Fields:
+
+- id.
+- registration_id.
+- token_hash.
+- issued_at.
+- revoked_at nullable.
+
+QR DECISION:
+
+QR tickets are STATIC.
+
+Generate one ticket for each confirmed registration.
+
+The QR contains an opaque, cryptographically random ticket token.
+
+Never encode:
+
+- Student email.
+- Student name.
+- Registration form answers.
+- Internal database IDs.
+- Financial details.
+
+Store only a secure hash of the token in the database.
+
+Do not store raw ticket tokens in logs.
+
+Do not regenerate a ticket every time the student opens the QR screen.
+
+The same valid ticket remains usable for the event until revoked or consumed.
+
+## TABLE 11 — event_attendance
+
+Fields:
+
+- id.
+- event_id.
+- registration_id.
+- scanned_by.
+- scanned_at.
+- attendance_status.
+
+Attendance status:
+
+- present.
+- reversed, if a controlled correction mechanism is supported.
+
+CRITICAL BUSINESS RULE:
+
+Attendance is SINGLE-ENTRY.
+
+A participant can be marked present only once per event.
+
+Enforce a database-level unique constraint on registration_id.
+
+Concurrent scans must never create duplicate attendance.
+
+Scanner authorization is flexible and must be resolved using club-scoped permissions.
+
+Do not hardcode a fixed list of four scanner accounts.
+
+Only authorized Admins and Core Members with scan_qr permission may scan.
+
+Record the actual scanner identity.
+
+## TABLE 12 — event_reports
+
+Fields:
+
+- id.
+- event_id.
+- club_id.
+- submitted_by.
+- summary.
+- attendance_summary.
+- outcomes.
+- report_data JSONB.
+- status.
+- submitted_at.
+- reviewed_by nullable.
+- reviewed_at nullable.
+- review_notes nullable.
+
+Statuses:
+
+- draft.
+- submitted.
+- approved.
+- rejected.
+
+Only authorized club administrators and delegated members may submit reports.
+
+Super Admin has institution-wide visibility.
+
+An approved report should not be silently overwritten.
+
+Use explicit correction or revision workflows.
+
+## TABLE 13 — financial_entries
+
+Fields:
+
+- id.
+- club_id.
+- event_id nullable.
+- report_id nullable.
+- entry_type.
+- amount NUMERIC(12,2).
+- currency.
+- description.
+- recorded_by.
+- created_at.
+
+Entry types:
+
+- collection.
+- expense.
+- adjustment.
+
+Rules:
+
+- Amount must be positive.
+- Currency must be explicit.
+- Financial entries must be auditable.
+- Use append-only financial records.
+- Corrections must use adjustment entries rather than destructive edits.
+- Do not treat an expected collection as actual collected money.
+
+Financial reporting must be visible to authorized Super Admins.
+
+Club-level visibility must be explicitly permission-controlled.
+
+## TABLE 14 — notifications
+
+Fields:
+
+- id.
+- user_id.
+- notification_type.
+- title.
+- message.
+- reference_type nullable.
+- reference_id nullable.
+- read_at nullable.
+- created_at.
+
+Index user_id and created_at.
+
+Do not build an external push-notification service in this phase.
+
+## TABLE 15 — audit_logs
+
+Fields:
+
+- id.
+- actor_user_id nullable.
+- action.
+- target_type.
+- target_id.
+- request_id.
+- metadata JSONB.
+- created_at.
+
+Audit logs must be append-only for ordinary application roles.
+
+Record relevant security and administrative mutations.
+
+Never log secrets, authentication tokens or complete private form responses.
+
+## TABLE 16 — platform_settings
+
+Fields:
+
+- id.
+- setting_key.
+- setting_value JSONB.
+- updated_by.
+- updated_at.
+
+Only explicitly approved Super Admin operations may change platform settings.
+
+Do not expose secrets through this table.
+
+## TABLE 17 — leaderboard_snapshots
+
+Fields:
+
+- id.
+- club_id.
+- follower_count.
+- rank.
+- calculated_at.
+
+Snapshots are historical records.
+
+The live Hall of Fame ranking must use authoritative follower counts.
+
+Do not allow a stale snapshot to become the source of truth for live rankings.
+
+Use snapshots only when there is a clear historical or performance requirement.
+
+---
+
+# PART 6 — CRITICAL TRANSACTIONAL BUSINESS RULES
+
+Implement the following correctly.
+
+## 6.1 Maximum two club follows
+
+When a user follows a club:
+
+1. Authenticate the user.
+2. Verify the club exists and is active.
+3. Begin a transaction.
+4. Lock or otherwise serialize the user's follow-limit check.
+5. Check whether the relationship already exists.
+6. Check the current follow count.
+7. Reject if the user already follows two clubs.
+8. Insert the follow relationship.
+9. Commit.
+
+Handle concurrent requests.
+
+Two simultaneous follow operations must not bypass the limit.
+
+## 6.2 Event registration
+
+Registration must:
+
+1. Authenticate the student.
+2. Confirm the event exists.
+3. Confirm the event is accepting registrations.
+4. Check registration deadlines.
+5. Validate the exact published form version.
+6. Check capacity transactionally.
+7. Prevent duplicate registration.
+8. Save the form submission.
+9. Create the registration.
+10. Create the static QR ticket.
+11. Record an audit event.
+12. Commit.
+
+If any critical step fails, roll back the transaction.
+
+If the event is full, use a clearly defined waitlist policy rather than silently exceeding capacity.
+
+## 6.3 Static QR attendance
+
+The scanning flow must:
+
+1. Authenticate the scanner.
+2. Verify scanner permission for the correct club.
+3. Validate the opaque ticket token.
+4. Hash the received token.
+5. Find the corresponding valid ticket.
+6. Verify the event and registration relationship.
+7. Verify the event is eligible for attendance scanning.
+8. Insert the attendance record transactionally.
+9. Let the unique database constraint prevent duplicate scans.
+10. Record scanner identity and timestamp.
+11. Return an explicit result.
+
+Return meaningful outcomes:
+
+- Attendance marked successfully.
+- Already marked present.
+- Invalid ticket.
+- Revoked ticket.
+- Registration not eligible.
+- Unauthorized scanner.
+- Event not eligible for scanning.
+
+Never trust a successful QR scan response generated only by the frontend.
+
+## 6.4 Financial records
+
+Financial entries must be append-only.
+
+A report should distinguish:
+
+- Total collections.
+- Total expenses.
+- Adjustments.
+- Net balance.
+
+Do not confuse registrations with money collected.
+
+Do not infer revenue from the number of participants.
+
+## 6.5 Report approval
+
+A report must have an explicit lifecycle.
+
+Submitted reports can be reviewed by Super Admin.
+
+Approval and rejection must be auditable.
+
+Club administrators must not approve their own institution-wide financial oversight records unless a separate explicitly authorized policy allows it.
+
+---
+
+# PART 7 — AUTHENTICATION INTEGRATION
+
+Complete the real Supabase Auth integration.
+
+Remove development-only authentication from production.
+
+Implement:
+
+- Supabase signup.
+- Email verification.
+- Login.
+- Logout.
+- Session refresh.
+- Password reset.
+- JWT verification.
+- Internal user provisioning.
+- Account status checks.
+
+Ensure the Supabase Auth identity maps to exactly one internal users record.
+
+Use an idempotent provisioning operation.
+
+Handle the case where a user has a valid Supabase identity but their internal application record does not yet exist.
+
+Do not automatically grant Super Admin permissions.
+
+Retain the Phase 1 one-time Super Admin bootstrap mechanism.
+
+Do not trust role claims from arbitrary browser metadata.
+
+Document how the developer configures Supabase Auth redirect URLs and custom SMTP.
+
+Development authentication may remain only as an explicitly isolated test adapter.
+
+It must not be available in production builds or production runtime configuration.
+
+---
+
+# PART 8 — DATABASE SECURITY AND RLS
+
+This section is mandatory.
+
+## 8.1 Privilege separation
+
+Use separate connections for:
+
+- Schema migrations.
+- Runtime application access.
+
+The migration connection may perform schema changes.
+
+The runtime role must:
+
+- Not be SUPERUSER.
+- Not have BYPASSRLS.
+- Not own protected tables.
+- Not have schema modification privileges.
+- Have only required data access permissions.
+
+Do not expose migration credentials to application code.
+
+Do not expose privileged database credentials to the browser.
+
+## 8.2 Row Level Security
+
+Enable RLS on all user-sensitive and club-sensitive tables.
+
+Create explicit policies for:
+
+- User-owned records.
+- Club-scoped records.
+- Super Admin-authorized records.
+- Scanner permissions.
+- Financial records.
+- Audit records.
+
+The Express backend must enforce authorization before executing domain operations.
+
+For database operations, set identity context transactionally using trusted server-derived identity.
+
+Do not set identity based on browser-supplied user IDs.
+
+Use transaction-local settings, not persistent session-level identity settings.
+
+Avoid leaking one request's identity into another pooled connection.
+
+## 8.3 Security verification
+
+Test that:
+
+- A Student cannot read another student's private form submission.
+- A Student cannot change their global role.
+- An Admin cannot access another club's private records.
+- A Core Member cannot perform unassigned operations.
+- A scanner cannot mark attendance for an unrelated club.
+- A club administrator cannot modify Super Admin permissions.
+- A regular user cannot alter financial entries.
+- A user cannot modify audit logs.
+- A user cannot follow more than two clubs.
+- A user cannot register twice for one event.
+
+If RLS is not genuinely enforced for a particular query path, do not claim it is.
+
+Document every exception and the compensating control.
+
+---
+
+# PART 9 — PERFORMANCE AND SCALABILITY
+
+The target is:
+
+100,000 database reads/writes per day.
+
+Traffic pattern:
+
+- Consistent traffic.
+- Registration opening spikes.
+- Event-day QR scanning spikes.
+- Simultaneous dashboard activity.
+
+This is an engineering and testing target, not a promise that free-tier resources can sustain every possible workload.
+
+Implement:
+
+1. Reusable database clients.
+2. Appropriate connection pooling.
+3. Query pagination.
+4. Indexed foreign keys.
+5. Unique constraints.
+6. Efficient follower-count queries.
+7. Efficient event-list queries.
+8. Efficient registration lookup.
+9. Transactional QR verification.
+10. No N+1 query patterns.
+11. Query timing instrumentation.
+12. Structured slow-query logging without sensitive data.
+
+Avoid adding Redis without measured need.
+
+Do not introduce speculative caching that can cause stale financial or attendance data.
+
+Use EXPLAIN ANALYZE on representative queries in a safe test environment.
+
+Never execute destructive performance tests against production.
+
+---
+
+# PART 10 — MIGRATION STRATEGY
+
+Create explicit, version-controlled Drizzle migrations.
+
+Requirements:
+
+- Initial schema migration.
+- Foreign-key creation in safe order.
+- Index migrations.
+- Unique constraints.
+- RLS enablement.
+- RLS policy migrations.
+- Database role configuration instructions.
+- Seed script for development reference data only.
+
+Never seed fake production students or financial records.
+
+Provide migration scripts in package.json.
+
+Expected command categories:
+
+- Generate migration.
+- Inspect generated migration.
+- Apply migration.
+- Check migration status.
+- Seed development data.
+
+Use the actual commands supported by the installed drizzle-kit version.
+
+Do not silently modify production schemas through application startup.
+
+Migrations must be an explicit deployment operation.
+
+---
+
+# PART 11 — REPLACE THE IN-MEMORY DATA LAYER
+
+After the PostgreSQL adapter is implemented:
+
+1. Connect existing repositories to PostgresDataAdapter.
+2. Preserve their existing interfaces where appropriate.
+3. Update domain services only where necessary.
+4. Preserve existing REST API contracts wherever possible.
+5. Remove production dependence on in-memory state.
+6. Make demo mode explicitly opt-in.
+7. Ensure production cannot silently fall back to demo mode.
+8. Verify data survives server restarts.
+9. Verify multiple application instances observe the same database records.
+
+All role-specific screens should consume real API data wherever the corresponding backend workflow already exists.
+
+Remove hardcoded business data and fake success messages.
+
+For unimplemented future workflows, show accurate empty or unavailable states rather than simulated functionality.
+
+---
+
+# PART 12 — FRONTEND INTEGRATION
+
+Do not redesign the whole application.
+
+Preserve the Phase 1 visual system.
+
+Connect existing screens and API clients to persistent backend data.
+
+Implement the data integration for:
+
+- Current user profile.
+- Club lists.
+- Club memberships.
+- Club follows.
+- Follow counts.
+- Hall of Fame ranking.
+- Event lists.
+- Event details.
+- Forms.
+- Form submissions.
+- Registration records.
+- Attendance status.
+- Event reports.
+- Financial summaries.
+- Notifications.
+- Platform settings.
+
+Only implement the backend and UI capabilities already represented in the existing application.
+
+Where a workflow is not yet implemented, do not invent a successful interaction.
+
+Implement proper:
+- Loading states.
+- Empty states.
+- Validation errors.
+- Permission-denied states.
+- Network errors.
+- Retry behavior.
+- Pagination.
+
+Ensure authentication state and cached queries are cleared appropriately on logout.
+
+---
+
+# PART 13 — FILE UPLOAD BOUNDARY
+
+Event gallery functionality remains excluded.
+
+Do not create an event image gallery.
+
+Custom forms may define file-upload fields.
+
+For this phase:
+
+- Define validated file-upload field metadata.
+- Define a storage abstraction if needed.
+- Store metadata and references in PostgreSQL only when a real storage integration exists.
+- Do not store image or document binary content in PostgreSQL.
+- Do not invent public file URLs.
+- Do not claim uploads work unless the actual storage provider has been configured and tested.
+
+Do not automatically create a Cloudflare R2 bucket or incur external charges.
+
+---
+
+# PART 14 — TESTING REQUIREMENTS
+
+Create comprehensive tests.
+
+## Database tests
+
+Test:
+
+- Schema creation.
+- Migration execution.
+- Foreign keys.
+- Unique constraints.
+- Invalid references.
+- User provisioning.
+- Membership creation.
+- Follow limit.
+- Event creation.
+- Form versioning.
+- Registration.
+- Capacity allocation.
+- Duplicate registration.
+- Static QR ticket creation.
+- Duplicate attendance prevention.
+- Financial entry immutability.
+- Report approval.
+- Audit record creation.
+
+## Concurrency tests
+
+Simulate:
+
+1. Two simultaneous follow requests that would exceed the two-club limit.
+2. Multiple simultaneous registrations for the final event slot.
+3. Two simultaneous scans of the same QR ticket.
+4. Simultaneous duplicate registration requests.
+
+Verify the database, not just the application response.
+
+## Security tests
+
+Test:
+
+- Authentication failure.
+- Expired JWT.
+- Unverified email.
+- Cross-club IDOR.
+- Role escalation.
+- Permission escalation.
+- RLS isolation.
+- Unauthorized scanner.
+- SQL injection payloads.
+- Invalid form payloads.
+- Audit log modification attempts.
+- Production demo-mode rejection.
+
+## Integration tests
+
+Verify all major repository implementations against a real isolated PostgreSQL test database.
+
+Mocked tests must be labelled as mocked.
+
+Do not report them as live PostgreSQL verification.
+
+## Persistence tests
+
+1. Create a record.
+2. Stop the application.
+3. Restart the application.
+4. Fetch the record.
+5. Confirm that it still exists.
+
+This is a mandatory acceptance test.
+
+---
+
+# PART 15 — DOCUMENTATION UPDATES
+
+Update the existing documentation rather than replacing it with generic summaries.
+
+## README.md
+
+Must explain:
+
+- The actual Phase 2 architecture.
+- PostgreSQL configuration.
+- Supabase project setup.
+- Runtime and migration database URLs.
+- Database role creation.
+- Connection pooling.
+- Drizzle configuration.
+- Migration workflow.
+- RLS setup.
+- Authentication setup.
+- Environment variables.
+- Development startup.
+- Production startup.
+- Testing.
+- Backup and restoration.
+- Troubleshooting.
+- Free-tier constraints.
+
+Include step-by-step instructions for a developer who has never configured CampusVerse.
+
+## docs/ARCHITECTURE.md
+
+Update the actual data flow and adapter architecture.
+
+## docs/DATABASE.md
+
+Include:
+- All implemented tables.
+- Entity relationship diagram.
+- Column definitions.
+- Foreign keys.
+- Indexes.
+- Constraints.
+- RLS policies.
+- Transaction boundaries.
+- Migration workflow.
+
+## docs/SECURITY.md
+
+Update:
+- Runtime privilege model.
+- RLS architecture.
+- Authentication.
+- Authorization.
+- Data isolation.
+- QR token security.
+- Financial integrity.
+- Audit controls.
+
+## docs/DEVELOPMENT.md
+
+Include:
+- Database setup.
+- Running migrations.
+- Running integration tests.
+- Resetting test databases safely.
+- Adding repositories.
+- Adding new database tables.
+
+## docs/DECISIONS.md
+
+Record new architecture decisions:
+
+- ADR-009: PostgreSQL adapter.
+- ADR-010: Drizzle persistence layer.
+- ADR-011: Transaction boundaries.
+- ADR-012: Static QR token storage.
+- ADR-013: Single-entry attendance.
+- ADR-014: Append-only financial records.
+
+Documentation must describe actual implementation.
+
+---
+
+# PART 16 — STRICT SCOPE BOUNDARIES
+
+Phase 2 is database integration and persistence.
+
+Do not expand into unrelated infrastructure or new visual redesigns.
+
+Do not:
+
+- Build microservices.
+- Add Redis without evidence.
+- Add Kafka.
+- Add Elasticsearch.
+- Introduce Firestore.
+- Introduce Prisma.
+- Introduce multiple competing databases.
+- Build an event gallery.
+- Implement external push notifications.
+- Implement payment gateways.
+- Invent online payment verification.
+- Add fake financial transactions.
+- Implement a second authentication system.
+- Store plaintext QR tokens.
+- Cache private API responses.
+- Remove working Phase 1 security controls.
+
+Do not automatically begin Phase 3.
+
+---
+
+# PART 17 — DEFINITION OF DONE
+
+Phase 2 is complete only when:
+
+1. The existing workspace is preserved.
+2. The PostgreSQL schema is implemented.
+3. All required migrations are generated and verified.
+4. Supabase Auth is integrated.
+5. Internal user provisioning is persistent.
+6. The PostgreSQL adapter is implemented.
+7. Existing repositories use the persistent adapter.
+8. Production cannot fall back to in-memory state.
+9. Role and membership records are persistent.
+10. Club follow limit is transactionally enforced.
+11. Event records are persistent.
+12. Forms and field definitions are persistent.
+13. Registration records are persistent.
+14. QR ticket tokens are securely stored as hashes.
+15. Single-entry attendance is enforced by PostgreSQL.
+16. Event reports are persistent.
+17. Financial entries are persistent and auditable.
+18. Notifications and settings are persistent.
+19. Audit records are append-only for normal application access.
+20. RLS policies are implemented and tested.
+21. Runtime and migration credentials are separated.
+22. Concurrent operation tests pass.
+23. Data survives application restarts.
+24. Frontend data is connected to real APIs.
+25. No fake business success is displayed.
+26. README and engineering documentation are updated.
+27. TypeScript passes.
+28. ESLint passes.
+29. Automated tests pass.
+30. Production build succeeds.
+
+If external Supabase credentials are unavailable, implement the correct integration and run isolated PostgreSQL tests where possible. Mark live Supabase verification as pending. Do not claim full completion.
+
+---
+
+# PART 18 — FINAL ENGINEERING REPORT
+
+When complete, provide:
+
+A. Repository audit findings.
+
+B. Architecture changes.
+
+C. Final directory structure.
+
+D. All 17 database tables and their relationships.
+
+E. Migration list and execution results.
+
+F. Authentication integration status.
+
+G. Runtime and migration privilege configuration.
+
+H. RLS policies and verification results.
+
+I. Adapter implementation details.
+
+J. Frontend integration status.
+
+K. Concurrency test results.
+
+L. Persistence restart test results.
+
+M. Security test results.
+
+N. Performance measurements and test methodology.
+
+O. README and documentation updates.
+
+P. External configuration still required.
+
+Q. Known limitations.
+
+R. Phase 2 readiness verdict.
+
+S. Technical handoff for Phase 3.
+
+Include actual command output or clear test summaries.
+
+Distinguish:
+- Passed.
+- Failed.
+- Skipped.
+- Mocked.
+- Not executed.
+- Requires external configuration.
+
+Do not exaggerate completion.
+
+---
+
+# FINAL DIRECTIVE
+
+Implement Phase 2 only.
+
+Preserve Phase 1.
+
+Use the actual existing codebase.
+
+Make PostgreSQL the single source of truth.
+
+Treat concurrency, authorization and data integrity as database-level engineering concerns.
+
+Do not proceed to Phase 3 until explicitly authorized.
+
+The objective is not merely to connect Supabase.
+
+The objective is to make CampusVerse a genuinely persistent, secure and maintainable database-backed SaaS application.

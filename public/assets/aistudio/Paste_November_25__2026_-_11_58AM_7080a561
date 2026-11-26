@@ -1,0 +1,1168 @@
+# CAMPUSVERSE — PHASE 4
+## COMPLETE EVENT MANAGEMENT, CLUB LEADERSHIP, MEMBER INVITATIONS, REGISTRATION, QR SCANNING & ATTENDANCE
+
+You are continuing development of CampusVerse, a production-oriented college clubs and event management platform.
+
+Phase 1 established the frontend and backend foundation.
+
+Phase 2 established Supabase PostgreSQL, Drizzle ORM, database migrations, runtime database access and RLS.
+
+Phase 3 establishes real users, clubs, memberships, permissions, club following and Hall of Fame.
+
+Your responsibility is to implement Phase 4 as a complete, persistent, secure event-management and attendance system, including the new club leadership and Core Member account-management workflow described below.
+
+This phase must build on the existing repository and database. Do not replace the architecture or implement unrelated future-phase functionality.
+
+---
+
+# SECTION 0 — MANDATORY PRE-IMPLEMENTATION GATE
+
+Before modifying anything:
+
+1. Inspect the complete existing repository.
+2. Inspect the current Phase 1, Phase 2 and Phase 3 implementation.
+3. Read the current Drizzle schema and every applied migration.
+4. Inspect all existing repositories and DataAdapter interfaces.
+5. Inspect authentication, JWT validation, authorization middleware and RLS policies.
+6. Inspect existing event, form, registration, attendance, club and membership routes.
+7. Inspect existing frontend pages and shared components.
+8. Run the existing tests and build.
+
+Verify the actual managed development server and PostgreSQL connection.
+
+Required checks:
+
+- `/api/v1/health`
+- `/api/v1/health/ready`
+- `/api/v1/auth/config`
+- `/api/v1/clubs`
+- `/api/v1/events`
+
+The runtime database connection must use `campusverse_app`, not the migration connection.
+
+Verify:
+- `rolsuper = false`
+- `rolbypassrls = false`
+- Demo mode disabled.
+- No automatic fallback to in-memory demo data.
+
+If the Phase 2 password authentication problem or another database connectivity problem still exists, stop and report it.
+
+Do not proceed with implementation until the gate passes.
+
+If Phase 3 is incomplete, do not pretend its features are available. Report the missing prerequisites.
+
+Do not reset, truncate or recreate the database.
+
+---
+
+# SECTION 1 — ARCHITECTURE AND ENGINEERING RULES
+
+Preserve the existing architecture:
+
+- React 19.
+- TypeScript.
+- Vite.
+- Tailwind CSS 4.
+- Express and Node.js.
+- Supabase Auth.
+- Supabase PostgreSQL.
+- Drizzle ORM.
+- Existing DataAdapter architecture.
+- Existing Zod validation.
+- Existing authorization and audit middleware.
+- Existing PWA functionality.
+
+Use the existing modular monolith.
+
+The browser must communicate with the Express API for all business operations.
+
+The browser may use Supabase Auth for authentication and session management.
+
+Never expose:
+- Supabase service-role keys.
+- Migration database credentials.
+- Database connection strings.
+- JWT signing secrets.
+- Invitation tokens.
+- Password reset tokens.
+- Internal database identifiers unnecessarily.
+
+Do not introduce Firebase, Firestore, Prisma, MongoDB or another backend.
+
+Do not introduce microservices.
+
+Do not change the hosting architecture without a documented technical necessity.
+
+---
+
+# SECTION 2 — NEW CLUB LEADERSHIP MODEL
+
+Implement the following club-specific hierarchy.
+
+## Global role
+
+- `super_admin`
+- `user`
+
+## Club-scoped roles
+
+- `president`
+- `vice_president`
+- `core_member`
+
+A user may have different club memberships and roles across different clubs.
+
+A student's ordinary platform account remains a `user`.
+
+Following a club does not create a club membership.
+
+Club membership and club following must remain independent.
+
+### President
+
+The President is the primary operational leader of a club.
+
+The President can:
+
+- Manage permitted club profile information.
+- Manage club Core Members.
+- Invite eligible Core Members.
+- View club membership information.
+- Create and manage club events.
+- Create and manage registration forms.
+- View event registrations.
+- Export authorized registration information.
+- Access attendance dashboards.
+- Scan event QR codes.
+- View event attendance statistics.
+
+### Vice President
+
+The Vice President has the operational permissions assigned by the system.
+
+By default, the Vice President should be able to:
+
+- Manage Core Members.
+- Invite eligible Core Members.
+- Manage club events.
+- Manage event registration forms.
+- View authorized event registrations.
+- Scan QR codes.
+- Access attendance information.
+- View club operational information.
+
+The Vice President must not:
+- Promote themselves to President.
+- Assign themselves Super Admin.
+- Change another club's membership.
+- Transfer their leadership privileges to an arbitrary account.
+
+The exact permissions must be represented through server-side permission constants and database-backed authorization.
+
+### Core Member
+
+Core Members receive individual accounts.
+
+Their default permissions should be limited to:
+
+- View assigned club information.
+- View events they are authorized to work on.
+- Scan QR codes for assigned club events if granted scanning permission.
+
+Do not automatically grant Core Members unrestricted event management or registration-response access.
+
+Use explicit permissions.
+
+---
+
+# SECTION 3 — SUPER ADMIN CLUB CREATION AND LEADERSHIP ASSIGNMENT
+
+This is a major new workflow.
+
+## Super Admin interface
+
+Inside the Super Admin dashboard, provide a Clubs management page.
+
+Super Admin can:
+
+1. Create a club.
+2. Open the club's details.
+3. View the club profile and status.
+4. Assign the President.
+5. Assign the Vice President.
+6. View leadership assignment status.
+7. Resend invitations.
+8. Revoke an invitation.
+9. Replace a President or Vice President.
+10. View club members and event activity.
+
+### Club creation workflow
+
+Step 1: Super Admin clicks Create Club.
+
+Step 2: Enter:
+- Club name.
+- Unique slug.
+- Description.
+- Category.
+- Other supported profile information.
+
+Step 3: Save the club.
+
+Step 4: Open the newly created club's management page.
+
+Step 5: Assign President and Vice President using their institutional email addresses.
+
+Step 6: Send separate invitations to both users.
+
+Step 7: Show their invitation status.
+
+Possible states:
+- Not assigned.
+- Invitation pending.
+- Invitation accepted.
+- Active.
+- Invitation expired.
+- Invitation revoked.
+
+### Leadership uniqueness
+
+Each active club should have:
+- At most one President.
+- At most one Vice President.
+
+A user must not accidentally be assigned to both leadership positions for the same club unless a deliberate Super Admin exception is implemented and audited.
+
+Prevent duplicate active assignments.
+
+Leadership replacement must be transactional and audited.
+
+When a President or Vice President is replaced, revoke their previous leadership membership and ensure their access is updated immediately.
+
+Do not delete their entire platform account.
+
+---
+
+# SECTION 4 — SECURE ACCOUNT INVITATIONS AND PASSWORD MANAGEMENT
+
+This section is security-critical.
+
+The Super Admin, President and Vice President interfaces should accept the institutional email address of the person being invited.
+
+However, do not implement a system where one user creates, views or stores another user's permanent password.
+
+### Required secure workflow
+
+1. Authorized inviter enters the person's institutional email.
+2. Backend normalizes and validates the email.
+3. Backend verifies that the inviter has the required club-level permission.
+4. Backend creates an invitation record.
+5. Backend provisions or invites the identity through Supabase Auth Admin APIs.
+6. The invited person receives a secure invitation email.
+7. The person opens the invitation link.
+8. The invitation is validated.
+9. The person sets their own password.
+10. Supabase Auth establishes the authenticated identity.
+11. The backend activates the corresponding application membership.
+12. The invitation is marked accepted.
+13. The action is written to the audit log.
+
+Use the Supabase Auth invitation or supported account-provisioning flow that matches the installed Supabase Auth version.
+
+### Security requirements
+
+- Service-role credentials remain server-side.
+- Never send service-role credentials to the browser.
+- Never store plaintext passwords.
+- Never log passwords or invitation tokens.
+- Never expose an invitation token through ordinary API responses.
+- Invitations must expire.
+- Invitations must be single-use.
+- Revoked invitations must not be accepted.
+- Resending an invitation must invalidate or safely supersede the previous invitation.
+- Do not allow arbitrary email domains.
+- Require institutional email verification.
+- Do not allow a client to choose a global role or arbitrary club permissions.
+- Do not activate a membership before invitation acceptance.
+- Do not reveal whether an arbitrary email belongs to an existing user through public error responses.
+
+If the user already has a valid CampusVerse account, link the invitation to that existing identity safely instead of creating a duplicate account.
+
+### Password policy
+
+Use Supabase Auth password handling.
+
+Require an appropriate minimum password length and enforce supported password-strength protections.
+
+Never implement a custom password hashing system.
+
+Never expose passwords in:
+- Database records.
+- Audit metadata.
+- Logs.
+- Browser storage.
+- API responses.
+
+### Email delivery
+
+Inspect the existing Supabase email configuration.
+
+If the default Supabase SMTP service is insufficient, document the custom SMTP configuration required before real deployment.
+
+Do not claim email invitations work unless an actual delivery and acceptance test has succeeded.
+
+For local tests, use a controlled test-email adapter without pretending it is production delivery.
+
+---
+
+# SECTION 5 — PRESIDENT AND VICE PRESIDENT CORE MEMBER MANAGEMENT
+
+The President and Vice President should have a dedicated Team Management page.
+
+They can:
+
+- Enter a Core Member's institutional email.
+- Send an invitation.
+- View pending invitations.
+- Resend invitations.
+- Revoke invitations.
+- View accepted members.
+- Assign supported permissions.
+- Revoke Core Member access.
+
+### Core Member invitation
+
+The invitation flow must follow the secure account invitation process in Section 4.
+
+The President or Vice President must not be allowed to enter and store a permanent password for another user.
+
+The Core Member creates their own password after accepting the invitation.
+
+### Scanner access limit
+
+A club can have a maximum of **four active Core Members with QR-scanning permission**.
+
+This is a strict business rule.
+
+The President and Vice President are separate leadership roles and do not consume the four Core Member scanner slots.
+
+The backend must enforce this limit.
+
+Do not rely on a disabled frontend button or a JavaScript count.
+
+### Permission management
+
+A Core Member may have:
+- `can_scan_qr`
+- Other explicitly authorized permissions, if required.
+
+Only the President, Vice President or Super Admin, according to the configured policy, can grant or revoke Core Member permissions.
+
+### Concurrency
+
+Use a PostgreSQL transaction and a club-scoped locking strategy when granting scanner permissions.
+
+Two simultaneous requests must never result in five active scanner-enabled Core Members.
+
+Use an appropriate database constraint or transactional enforcement strategy.
+
+Recheck permissions during every scanner operation.
+
+### Team dashboard
+
+Display:
+- Member name.
+- Institutional email.
+- Membership status.
+- Invitation status.
+- Assigned permissions.
+- QR-scanning eligibility.
+- Invitation date.
+- Last relevant status update.
+
+Do not display passwords or private authentication tokens.
+
+---
+
+# SECTION 6 — EVENT MANAGEMENT
+
+Implement the complete event lifecycle.
+
+Club Presidents and Vice Presidents should have event-management access by default.
+
+Core Members may receive event permissions only when explicitly assigned.
+
+### Event creation
+
+Support:
+- Event title.
+- Description.
+- Category.
+- Venue.
+- Start date and time.
+- End date and time.
+- Registration opening date.
+- Registration closing date.
+- Participant capacity.
+- Eligibility rules.
+- Event status.
+
+### Event lifecycle
+
+Support:
+- Draft.
+- Published.
+- Registration open.
+- Registration closed.
+- Completed.
+- Cancelled.
+
+Use valid state transitions.
+
+Do not allow an event to be published without the required details and a valid registration configuration.
+
+### Event management
+
+Authorized club staff can:
+- Create events.
+- Edit events.
+- Publish events.
+- Unpublish drafts.
+- Close registration.
+- Cancel events.
+- View event details.
+- View registration counts.
+- View attendance counts.
+
+Do not allow club staff to modify another club's events.
+
+Inactive clubs must not be able to publish new events.
+
+Existing historical events must remain intact.
+
+---
+
+# SECTION 7 — CUSTOM REGISTRATION FORM BUILDER
+
+Create a form builder for each event.
+
+The builder should support:
+
+- Short text.
+- Long text.
+- Email.
+- Phone number.
+- Number.
+- Dropdown.
+- Single-choice options.
+- Multiple-choice options.
+- Checkboxes.
+- URL fields.
+
+Support:
+- Field labels.
+- Descriptions.
+- Required and optional fields.
+- Validation rules.
+- Option ordering.
+- Field ordering.
+- Preview mode.
+- Draft and published forms.
+
+### Form versioning
+
+Once registrations exist, changing the form must not corrupt previously submitted answers.
+
+Implement form versioning or an equivalent immutable published-form snapshot.
+
+Each registration must retain the form version against which it was submitted.
+
+Validate every submission against the correct published form version.
+
+Do not trust arbitrary fields sent by the browser.
+
+---
+
+# SECTION 8 — STUDENT EVENT DISCOVERY AND REGISTRATION
+
+Students should be able to:
+
+- Browse events.
+- Search and filter events.
+- View event details.
+- See eligibility and capacity.
+- Register.
+- View registration confirmation.
+- Access their QR code.
+- View past and upcoming registrations.
+
+### Registration rules
+
+- Require authenticated users.
+- Validate institutional eligibility.
+- Prevent duplicate registration.
+- Enforce registration opening and closing times.
+- Enforce event capacity atomically.
+- Reject registration for cancelled events.
+- Validate custom form responses server-side.
+- Store submitted responses persistently.
+
+### Concurrency
+
+Two students registering for the last available seat must not both receive confirmed registrations.
+
+Implement transactional capacity enforcement.
+
+Use database locking or an appropriate atomic database operation.
+
+### Waitlist
+
+If the existing CampusVerse requirements support waitlists, implement:
+- Waitlisted status.
+- Queue position.
+- Promotion when a seat becomes available.
+- Transactional promotion.
+- Duplicate prevention.
+
+If waitlists are not part of the existing agreed scope, keep them disabled and document the limitation rather than inventing incomplete functionality.
+
+---
+
+# SECTION 9 — UNIQUE QR CODE GENERATION
+
+Each successful registration must receive an individual QR code.
+
+### Token security
+
+- Generate cryptographically secure random tokens.
+- Store only a secure hash of the token.
+- Associate the token with one registration.
+- Do not place student email, registration number or internal database ID inside the QR payload.
+- Do not expose the stored hash.
+- Do not reuse QR tokens.
+- Support revocation where a registration is cancelled.
+
+The QR code should contain only an opaque verification token or secure verification payload.
+
+Do not treat a frontend-generated QR code as proof of registration.
+
+The backend is the authority.
+
+### Student interface
+
+In My Registrations, provide:
+- Event details.
+- Registration status.
+- QR code.
+- Attendance status.
+
+The QR should be accessible on mobile and suitable for scanning.
+
+---
+
+# SECTION 10 — QR SCANNING AND ATTENDANCE
+
+Implement a real camera-based QR scanning workflow.
+
+### Scanner access
+
+Only:
+- President.
+- Vice President.
+- A maximum of four active scanner-enabled Core Members per club.
+
+may scan attendance QR codes by default.
+
+Additional restrictions must be configurable only by Super Admin.
+
+### Scanner workflow
+
+1. Authorized user opens the scanner.
+2. Selects an event belonging to their club.
+3. Camera permission is requested.
+4. QR is scanned.
+5. The frontend submits the opaque token to Express.
+6. Express authenticates the scanner.
+7. Express verifies club membership and `can_scan_qr`.
+8. Express validates the QR token.
+9. Express verifies the event and registration.
+10. Express checks whether attendance has already been recorded.
+11. Express records attendance transactionally.
+12. The token is marked used.
+13. Scanner receives success or rejection.
+
+### Attendance rules
+
+- One registration can be marked present only once.
+- Tokens from other events must be rejected.
+- Invalid tokens must be rejected.
+- Expired or revoked tokens must be rejected.
+- Cancelled events must not accept attendance.
+- Unregistered users must not be checked in through a QR token.
+- Unauthorized club members must not scan.
+- Cross-club scanning must be rejected.
+- Concurrent scans must never create duplicate attendance.
+- All manual attendance changes must be audited.
+
+Use a unique database constraint for registration attendance.
+
+Do not trust a client-side "already scanned" check.
+
+### Manual attendance
+
+Provide manual attendance only to authorized users.
+
+Require:
+- A reason for manual modification.
+- Authenticated actor.
+- Audit record.
+- Appropriate permission.
+
+Do not allow Core Members without the relevant permission to alter attendance records.
+
+### Scanner interface
+
+Include:
+- Camera scanning.
+- Manual token entry as a controlled fallback.
+- Camera permission errors.
+- Invalid QR feedback.
+- Already-used QR feedback.
+- Successful check-in feedback.
+- Event selection.
+- Scanned participant confirmation without exposing unnecessary private data.
+
+Use a maintained QR scanning library compatible with the current React and browser architecture.
+
+Do not simulate camera scanning and claim it is complete.
+
+---
+
+# SECTION 11 — ATTENDANCE DASHBOARD AND EXPORTS
+
+Club leadership and authorized staff can view:
+
+- Total registrations.
+- Confirmed registrations.
+- Waitlisted registrations, if enabled.
+- Total attendees.
+- Attendance percentage.
+- Not-yet-checked-in participants.
+- Attendance timestamps.
+- Authorized participant details.
+
+Provide CSV exports for authorized users.
+
+Protect exports against:
+- Unauthorized club access.
+- Cross-club information disclosure.
+- Spreadsheet formula injection.
+- Unbounded data retrieval.
+
+Apply pagination and sensible export limits.
+
+---
+
+# SECTION 12 — STUDENT MY REGISTRATIONS
+
+Build a persistent My Registrations page.
+
+Show:
+- Upcoming events.
+- Past events.
+- Event name.
+- Event date.
+- Registration status.
+- QR code.
+- Attendance status.
+
+Registration status and attendance status must be separate concepts.
+
+For example:
+- Registration: confirmed.
+- Attendance: not checked in.
+
+After scanning:
+- Registration: confirmed.
+- Attendance: present.
+
+Do not mark attendance merely because a QR code was displayed.
+
+---
+
+# SECTION 13 — DATABASE AND MIGRATIONS
+
+Inspect and reuse existing Phase 2 tables.
+
+Expected tables include:
+
+- `users`
+- `clubs`
+- `club_memberships`
+- `events`
+- `event_forms`
+- `form_fields`
+- `registrations`
+- `attendance_records`
+- `notifications`
+- `audit_logs`
+
+The exact schema must be derived from the existing repository.
+
+Introduce additional tables only when justified, such as an invitation table to track:
+- Inviter.
+- Invitee email.
+- Club.
+- Intended role.
+- Invitation status.
+- Expiry.
+- Acceptance timestamp.
+- Revocation timestamp.
+
+Never store plaintext invitation tokens.
+
+Use hashed invitation tokens if application-managed invitation tokens are required.
+
+Use appropriate constraints and indexes.
+
+Potential constraints include:
+- Unique user-club membership.
+- Unique registration per user and event.
+- Unique attendance per registration.
+- Unique active leadership position per club.
+- Maximum four scanner-enabled Core Members per club, enforced transactionally.
+
+Do not attempt to enforce an aggregate four-member limit with an ordinary row-level CHECK constraint.
+
+Use safe transactions, locking and, where appropriate, a database trigger or a dedicated allocation mechanism.
+
+Store monetary values in integer minor units if any existing event-related financial fields are used.
+
+Do not implement Phase 5 financial reporting.
+
+All schema changes must use new version-controlled Drizzle migrations.
+
+Do not edit previously applied migrations.
+
+Do not reset or truncate the database.
+
+---
+
+# SECTION 14 — API DESIGN
+
+Use the existing `/api/v1` architecture.
+
+Inspect and reuse existing routes before creating new ones.
+
+### Leadership and invitations
+
+Possible API contracts:
+
+- `POST /api/v1/clubs/:clubId/invitations`
+- `GET /api/v1/clubs/:clubId/invitations`
+- `POST /api/v1/clubs/:clubId/invitations/:invitationId/resend`
+- `DELETE /api/v1/clubs/:clubId/invitations/:invitationId`
+- `GET /api/v1/clubs/:clubId/members`
+- `PATCH /api/v1/clubs/:clubId/members/:membershipId/permissions`
+- `DELETE /api/v1/clubs/:clubId/members/:membershipId`
+
+Super Admin leadership management:
+
+- `POST /api/v1/admin/clubs/:clubId/leadership`
+- `PATCH /api/v1/admin/clubs/:clubId/leadership/:membershipId`
+
+Invitation acceptance should use the supported Supabase Auth flow.
+
+### Event management
+
+- `GET /api/v1/events`
+- `GET /api/v1/events/:eventId`
+- `POST /api/v1/clubs/:clubId/events`
+- `PATCH /api/v1/events/:eventId`
+- `POST /api/v1/events/:eventId/publish`
+- `POST /api/v1/events/:eventId/cancel`
+
+### Forms
+
+- `GET /api/v1/events/:eventId/form`
+- `PUT /api/v1/events/:eventId/form`
+- `POST /api/v1/events/:eventId/form/publish`
+
+### Registrations
+
+- `POST /api/v1/events/:eventId/registrations`
+- `GET /api/v1/events/:eventId/registrations`
+- `GET /api/v1/users/me/registrations`
+- `GET /api/v1/registrations/:registrationId`
+
+### Attendance
+
+- `POST /api/v1/events/:eventId/attendance/verify`
+- `POST /api/v1/events/:eventId/attendance/manual`
+- `GET /api/v1/events/:eventId/attendance`
+- `GET /api/v1/events/:eventId/attendance/export`
+
+These are proposed API contracts. Do not duplicate existing working endpoints.
+
+Every route must implement:
+- Authentication.
+- Backend authorization.
+- Zod validation.
+- Club-level resource scoping.
+- Consistent errors.
+- Request IDs.
+- Audit logging for sensitive operations.
+- Pagination where applicable.
+
+Do not accept role, permissions, user ID or club ownership as trusted client input.
+
+---
+
+# SECTION 15 — FRONTEND PAGES AND WORKFLOWS
+
+Keep the existing design system.
+
+Do not redesign unrelated Phase 1–3 pages.
+
+## Super Admin
+
+Implement:
+- Clubs overview.
+- Create Club.
+- Club Details.
+- Assign President.
+- Assign Vice President.
+- Invitation status.
+- Resend and revoke invitation.
+- Replace leadership.
+- View club membership.
+- View event overview.
+
+## President and Vice President
+
+Implement:
+- Club Dashboard.
+- Team Management.
+- Invite Core Member.
+- Pending Invitations.
+- Core Member Permissions.
+- Scanner Access Allocation.
+- Event Management.
+- Form Builder.
+- Registrations.
+- QR Scanner.
+- Attendance Dashboard.
+
+The scanner allocation UI must show:
+- Active scanner-enabled Core Members.
+- Available scanner slots.
+- Maximum four active Core Member scanner slots.
+- Clear feedback when all slots are used.
+
+## Core Member
+
+Implement:
+- Club-specific dashboard.
+- Assigned events.
+- QR Scanner if authorized.
+- Attendance workflow.
+- Only the pages allowed by their permissions.
+
+## Student
+
+Implement:
+- Event discovery.
+- Event details.
+- Registration form.
+- Registration confirmation.
+- My Registrations.
+- QR code.
+- Attendance status.
+
+All information must come from actual APIs and PostgreSQL.
+
+Do not display fabricated event registrations or simulated attendance as real records.
+
+---
+
+# SECTION 16 — SECURITY REVIEW
+
+Perform a security review of every new workflow.
+
+### Authentication
+
+- Validate Supabase JWT signature.
+- Validate issuer, audience, expiration and subject.
+- Use appropriate signing-key verification.
+- Do not accept arbitrary user identity headers.
+- Do not trust client metadata for permissions.
+
+### Authorization
+
+- Enforce global and club-scoped roles on the backend.
+- Prevent IDOR vulnerabilities.
+- Prevent cross-club access.
+- Prevent unauthorized leadership assignment.
+- Prevent Core Member privilege escalation.
+- Enforce scanner limits transactionally.
+- Recheck permissions during every attendance scan.
+
+### Invitation security
+
+- Secure invitation lifecycle.
+- Expiring invitations.
+- Single-use acceptance.
+- Revocation.
+- No plaintext passwords.
+- No exposed service-role credentials.
+
+### Database
+
+- RLS enabled and actual policies reviewed.
+- Least-privilege runtime role.
+- No BYPASSRLS.
+- Safe transaction context.
+- Safe SECURITY DEFINER functions.
+- Appropriate unique constraints.
+- No migration credentials used at runtime.
+
+### QR security
+
+- High-entropy tokens.
+- Hash at rest.
+- One registration per token.
+- Atomic check-in.
+- Unique attendance.
+- Replay prevention.
+- No personal data inside QR payload.
+
+### Web application
+
+- Secure CORS.
+- Rate limiting.
+- Request validation.
+- Output encoding.
+- CSRF protections where applicable.
+- Safe error messages.
+- Secure HTTP headers.
+- Upload functionality must not be added unless explicitly required.
+
+Do not claim security merely because Helmet or RLS is enabled.
+
+Demonstrate actual authorization and concurrency tests.
+
+---
+
+# SECTION 17 — TESTING
+
+Run tests against actual PostgreSQL wherever database behaviour is involved.
+
+### Leadership tests
+
+- Super Admin creates a club.
+- Super Admin assigns a President.
+- Super Admin assigns a Vice President.
+- Duplicate President assignment is rejected.
+- Duplicate Vice President assignment is rejected.
+- Leadership replacement revokes previous access.
+- President invites a Core Member.
+- Vice President invites a Core Member.
+- Unauthorized student cannot invite members.
+- Invitation cannot be accepted twice.
+- Expired invitation cannot be accepted.
+- Revoked invitation cannot be accepted.
+- Existing user can accept an invitation without duplicate identity creation.
+- Core Member cannot elevate permissions.
+
+### Scanner slot tests
+
+- First four eligible Core Members can receive scanner access.
+- Fifth Core Member cannot receive scanner access.
+- Removing scanner permission releases a slot.
+- Removing a member releases a slot.
+- Concurrent assignment attempts never create more than four scanner-enabled Core Members.
+- President and Vice President are not counted against the four Core Member slots.
+- Unauthorized users cannot bypass the limit through direct API requests.
+
+### Event tests
+
+- Authorized user creates an event.
+- Unauthorized user cannot create an event.
+- Club Admin cannot edit another club's event.
+- Invalid event dates are rejected.
+- Invalid event transitions are rejected.
+- Cancelled events cannot receive new registrations.
+
+### Form tests
+
+- All supported field types validate.
+- Required fields are enforced.
+- Invalid responses are rejected.
+- Published form versions remain stable.
+- Previous registrations retain their original submitted answers.
+
+### Registration tests
+
+- Successful registration persists.
+- Duplicate registration is rejected.
+- Registration outside the allowed time window is rejected.
+- Capacity is enforced.
+- Concurrent last-seat registrations are handled atomically.
+- Cancelled events reject registration.
+- Unauthorized registration data cannot be accessed.
+
+### QR and attendance tests
+
+- Valid QR token succeeds.
+- Invalid token is rejected.
+- Token from another event is rejected.
+- Already-used token is rejected.
+- Revoked token is rejected.
+- Unauthorized Core Member cannot scan.
+- Core Member without scanning permission cannot scan.
+- Cross-club scanning is rejected.
+- Duplicate concurrent scans create exactly one attendance record.
+- Manual attendance requires permission and reason.
+
+### Security tests
+
+- JWT tampering is rejected.
+- Cross-club IDOR attempts are rejected.
+- Role escalation attempts are rejected.
+- Unauthorized exports are rejected.
+- Spreadsheet formula injection is neutralized.
+- No password or secret appears in application logs.
+
+### Regression tests
+
+Run all relevant Phase 1–3 tests.
+
+Confirm authentication, profiles, club management, following, Hall of Fame, health endpoints and PWA behaviour remain intact.
+
+---
+
+# SECTION 18 — PERFORMANCE AND SCALABILITY
+
+CampusVerse has a target of approximately 100,000 database operations per day, with both steady and burst traffic, and a preference for free or low-cost infrastructure.
+
+Do not claim this load is supported without measurement.
+
+For Phase 4:
+- Add appropriate database indexes.
+- Avoid N+1 queries.
+- Paginate registration lists.
+- Use transactions for capacity and attendance.
+- Avoid fetching all form responses unnecessarily.
+- Keep QR verification queries efficient.
+- Avoid unbounded CSV exports.
+- Avoid polling aggressively.
+- Use existing query caching where appropriate.
+
+Run concurrency and performance tests.
+
+Report actual measurements, not theoretical capacity claims.
+
+---
+
+# SECTION 19 — DOCUMENTATION
+
+Update README and architecture documentation.
+
+Document:
+
+1. Phase 4 architecture.
+2. Club leadership model.
+3. President and Vice President assignment.
+4. Secure invitation flow.
+5. Password creation and reset.
+6. Core Member management.
+7. Four-scanner limit.
+8. Event lifecycle.
+9. Custom form builder.
+10. Form versioning.
+11. Registration lifecycle.
+12. Capacity enforcement.
+13. QR token generation.
+14. Attendance verification.
+15. API reference.
+16. Database migrations.
+17. RLS and permission boundaries.
+18. SMTP setup.
+19. Environment variables.
+20. Local development setup.
+21. Testing commands.
+22. Deployment requirements.
+23. Known limitations.
+
+Clearly identify which features are implemented, tested, unverified or deferred.
+
+---
+
+# SECTION 20 — PHASE 4 COMPLETION REPORT
+
+Do not stop at a successful build.
+
+Provide a complete report containing:
+
+1. Executive Summary.
+2. Repository Changes.
+3. Architecture Changes.
+4. Database Schema and Migration Changes.
+5. Super Admin Club Creation Workflow.
+6. President and Vice President Assignment.
+7. Secure Invitation and Account Creation.
+8. Core Member Management.
+9. Four-Scanner Limit and Concurrency.
+10. Event Management.
+11. Form Builder.
+12. Registration Engine.
+13. Capacity Enforcement.
+14. QR Generation.
+15. QR Scanner.
+16. Attendance System.
+17. API Endpoints.
+18. RLS and Security Review.
+19. Frontend Integration.
+20. Exact Tests and Results.
+21. Live PostgreSQL Verification.
+22. Email Delivery Verification.
+23. Performance Results.
+24. Environment Variables and Setup.
+25. Known Issues.
+26. Phase 5 Readiness.
+
+For each test, provide:
+- Exact command.
+- Actual result.
+- Whether it used mocks or real PostgreSQL.
+- Any skipped tests and reasons.
+
+Do not claim that invitations work unless an invitation was actually delivered and accepted in a real test.
+
+Do not claim that camera scanning works unless the actual browser camera scanner was tested.
+
+Do not claim that concurrent operations are safe without database-level concurrency tests.
+
+---
+
+# STRICT SCOPE BOUNDARY
+
+Implement the full Phase 4 scope, including club leadership and invitations.
+
+Do not implement Phase 5:
+- Event post-event reports.
+- Financial reports.
+- Collected amount reporting.
+- Finance line-item management.
+- Institution-wide financial dashboards.
+
+Do not add an event gallery.
+
+Do not add payment gateway integration.
+
+Do not skip the existing Phase 4 requirements in favour of only implementing the new leadership feature.
+
+The final outcome must be one integrated, database-backed CampusVerse event and attendance system.
+
+**Stop after Phase 4. Wait for review and approval before beginning Phase 5.**

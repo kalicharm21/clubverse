@@ -1,0 +1,1091 @@
+# CAMPUSVERSE — PHASE 5
+## Full System Completion, Integration, Event Operations, Ticketing, Financial Management & Institutional Administration
+
+### Primary Objective
+
+Implement Phase 5 as the final major functional integration phase of CampusVerse.
+
+**Do not simply start adding Phase 5 features on top of an incomplete application.** First inspect the existing codebase and verify that Phases 1, 2, 3 and 4 are actually implemented and working together.
+
+Several existing workflows are currently reported as incomplete:
+- Club activities are not functioning as expected.
+- Custom forms are not being published properly.
+- Event creation and publishing need end-to-end verification.
+- Participant registration and ticket release are not working as one complete workflow.
+- QR scanner and automatic ticket verification need to be connected to real backend operations.
+- Dashboard navigation and role switching need improvement.
+
+Fix these existing issues before considering Phase 5 complete.
+
+Do not create duplicate systems, replace working architecture unnecessarily, or introduce demo-only implementations in place of real functionality.
+
+---
+
+# SECTION 0 — MANDATORY EXISTING SYSTEM AUDIT
+
+Before implementing anything, inspect the entire repository.
+
+Review:
+- Existing React frontend and routing.
+- Express API and all registered routes.
+- Supabase PostgreSQL database.
+- Drizzle schema and migrations.
+- Supabase authentication configuration.
+- Club memberships and permissions.
+- Event and form management.
+- Registrations and ticket generation.
+- QR scanning and attendance.
+- PWA and caching.
+- Existing tests and documentation.
+
+### 0.1 Verify all previous phases
+
+**Phase 1 — Foundation**
+- Frontend and backend must run correctly.
+- All dashboard routes must work.
+- Navigation must not lead to broken or empty pages.
+- No important functionality should rely on temporary in-memory demo data.
+
+**Phase 2 — Database and authentication**
+- Verify the actual managed application connects to PostgreSQL.
+- `/api/v1/health/ready` must return HTTP 200.
+- Verify the application uses the correct restricted runtime database role.
+- Confirm Supabase authentication works.
+- No silent fallback to demo mode.
+- Verify migrations match the actual database schema.
+
+**Phase 3 — Users, clubs and permissions**
+- Verify Super Admin can create and manage clubs.
+- Verify President and Vice President assignments.
+- Verify Core Member management.
+- Verify the two-club student following limit.
+- Verify permissions are enforced by the backend.
+- Verify club-specific access isolation.
+
+**Phase 4 — Events, forms, registrations, tickets and attendance**
+- Verify the complete event lifecycle.
+- Verify forms can be created, published, edited and submitted.
+- Verify registrations are stored persistently.
+- Verify ticket release works.
+- Verify actual QR scanning and automatic attendance verification.
+- Verify the scanner permission limit and all club-specific permissions.
+- Verify the performance optimizations already requested.
+
+### 0.2 Do not hide existing failures
+
+Create a Phase 1–4 verification report with:
+
+| Area | Required evidence |
+|---|---|
+| Authentication | Successful login, logout and session restoration |
+| Database | Live PostgreSQL readiness |
+| Club management | Create, update and access control |
+| Role management | Student, President, Vice President, Core Member, Super Admin |
+| Forms | Create, publish and submit |
+| Events | Create, publish, update and close |
+| Registration | Successful and duplicate registration handling |
+| Tickets | Release and participant access |
+| QR scanner | Real token verification and attendance |
+| Permissions | Authorized and unauthorized access tests |
+| Dashboard | Correct navigation and live data |
+
+Fix the issues instead of merely documenting them.
+
+If a critical dependency is unavailable, report the exact blocker and do not claim the feature is complete.
+
+---
+
+# SECTION 1 — PRESERVE THE EXISTING ARCHITECTURE
+
+Keep the existing technology stack unless a documented technical issue makes a change necessary.
+
+Expected architecture:
+
+- React 19 + TypeScript + Vite.
+- Tailwind CSS 4.
+- Node.js + Express + TypeScript.
+- Supabase PostgreSQL.
+- Supabase Auth.
+- Drizzle ORM.
+- Zod validation.
+- TanStack Query.
+- React Router.
+- Vitest, Supertest and Playwright.
+- Existing PWA and Workbox configuration.
+
+Architecture requirements:
+
+1. Keep a modular monolith.
+2. Express remains the authoritative business API.
+3. The browser must not directly modify business tables.
+4. Use database transactions for operations involving multiple records.
+5. Use server-side permission checks for every protected operation.
+6. Reuse existing repositories, services, routes and database tables.
+7. Avoid duplicate tables and duplicate business logic.
+8. Do not introduce Firebase, Firestore, MongoDB, Prisma or an unnecessary second backend.
+9. Do not expose Supabase service-role keys or other secrets in frontend code.
+10. Do not disable RLS to make an endpoint work.
+
+---
+
+# SECTION 2 — FIX THE COMPLETE CLUB AND EVENT WORKFLOW
+
+This is a critical requirement.
+
+A club should be able to operate from its dashboard without relying on manual database changes.
+
+### 2.1 Club activity management
+
+Verify that club activity is actually functional.
+
+The authorized President and Vice President should be able to:
+- Open their club dashboard.
+- Manage club information.
+- Manage the club team.
+- Create and manage events.
+- Create and manage registration forms.
+- View registrations.
+- Release tickets.
+- Access the QR scanner.
+- Review attendance.
+- Submit post-event reports.
+- Manage permitted club settings.
+
+Core Members must only access the functionality explicitly assigned to them.
+
+All actions must be persisted in PostgreSQL and reflected in the relevant dashboards.
+
+### 2.2 Club Instagram profile
+
+Add an Instagram field to each club's profile.
+
+Requirements:
+- President and Vice President can add or update the club's Instagram profile URL.
+- Validate that the URL is a valid Instagram profile URL.
+- Display the Instagram icon and clickable profile link on the public club profile.
+- Display it in the club dashboard.
+- Allow authorized users to update or remove it.
+- Students and visitors can view it but cannot modify it.
+- Validate and sanitize the URL on the backend.
+
+Do not ask each club to store its Instagram password. Only the public profile URL is required.
+
+---
+
+# SECTION 3 — FIX CUSTOM FORM CREATION AND PUBLISHING
+
+**Forms are currently not publishing correctly. Treat this as a priority defect.**
+
+Audit the entire flow:
+
+Form Builder → Save Draft → Validate → Publish → Public Registration Page → Participant Submission → Database Persistence → Admin Registration Dashboard.
+
+### 3.1 Form builder
+
+Support:
+- Short text.
+- Long text.
+- Email.
+- Phone.
+- Number.
+- Dropdown.
+- Single-choice options.
+- Multiple-choice options.
+- Checkboxes.
+- URL.
+
+Each field should support:
+- Label.
+- Description.
+- Required/optional.
+- Validation rules.
+- Options where applicable.
+- Display order.
+- Unique field identifier.
+
+### 3.2 Publishing
+
+When an authorized club leader clicks **Publish Form**:
+
+1. Validate the form on the frontend.
+2. Validate it again on the backend.
+3. Persist the form and its fields.
+4. Create an immutable published version.
+5. Change the form status to published.
+6. Return a successful API response.
+7. Make the public form available through the correct event registration page.
+8. Ensure participants can actually open and submit it.
+
+Do not display a Published badge unless the backend confirms publication.
+
+If publication fails, display the actual error and allow a safe retry.
+
+### 3.3 Form versioning
+
+- Published form versions must remain identifiable.
+- Editing an existing form should create a new version where required.
+- Existing registrations must retain the exact form version and answers used during submission.
+- Do not silently change historical submissions when a form is edited.
+
+### 3.4 Form testing
+
+Test:
+- Draft creation.
+- Form editing.
+- Successful publication.
+- Invalid form rejection.
+- Public form access.
+- Required field validation.
+- Valid participant submission.
+- Invalid participant submission.
+- Duplicate submission protection where applicable.
+- Admin viewing stored responses.
+
+---
+
+# SECTION 4 — COMPLETE EVENT CREATION AND PARTICIPANT REGISTRATION
+
+### 4.1 Event lifecycle
+
+Support these states:
+
+`draft → published → registration_open → registration_closed → completed`
+
+Also support cancellation.
+
+Each event should include:
+- Event title.
+- Description.
+- Club.
+- Category.
+- Venue.
+- Start and end dates.
+- Registration deadline.
+- Capacity.
+- Eligibility.
+- Registration form.
+- Event status.
+- Ticket release status.
+
+All status transitions must be validated on the backend.
+
+### 4.2 Participant registration
+
+A student should be able to:
+
+1. Open an active event.
+2. Click Register Now.
+3. Open the published registration form.
+4. Complete the form.
+5. Submit registration.
+6. Receive a clear registration confirmation.
+7. View registration status in My Registrations.
+
+Enforce:
+- Authentication where required.
+- Eligibility.
+- Registration deadline.
+- Event status.
+- Event capacity.
+- Duplicate registration prevention.
+- Atomic capacity enforcement under concurrent requests.
+
+### 4.3 Registration and ticket status must be separate
+
+Do not confuse registration confirmation with ticket availability.
+
+Use clearly separated states such as:
+
+**Registration status**
+- Pending.
+- Confirmed.
+- Cancelled.
+- Waitlisted, if an existing waitlist implementation is retained.
+
+**Ticket status**
+- Not released.
+- Released.
+- Revoked.
+
+A successful registration must not automatically make a ticket available when the event uses controlled ticket release.
+
+---
+
+# SECTION 5 — TICKET RELEASE WORKFLOW
+
+This is one of the most important requirements.
+
+**Participants must receive their tickets only after an authorized club leader explicitly clicks Release Tickets.**
+
+### 5.1 Before ticket release
+
+After successful registration:
+- The participant can see their registration confirmation.
+- Their registration is stored in PostgreSQL.
+- Their ticket status is `not_released`.
+- No usable QR ticket should be displayed.
+- The participant should see a message such as: "Your registration is confirmed. Your ticket will be available once the club releases tickets."
+
+### 5.2 Release tickets
+
+Add a Ticket Management section in the club event dashboard.
+
+The authorized President, Vice President or another explicitly authorized role can:
+
+1. Open the event.
+2. View confirmed registrations.
+3. Review the participant list.
+4. Click **Release Tickets**.
+5. See a confirmation dialog showing the number of participants receiving tickets.
+6. Confirm the action.
+7. Trigger a secure backend ticket-release operation.
+
+The backend must:
+- Verify club membership and permissions.
+- Verify that the event permits ticket release.
+- Select eligible confirmed registrations.
+- Generate secure, unique tickets.
+- Persist ticket records and QR token hashes.
+- Update ticket statuses transactionally.
+- Record who released the tickets and when.
+- Prevent accidental duplicate ticket creation.
+
+Make the operation idempotent so repeated requests do not generate duplicate tickets.
+
+### 5.3 After ticket release
+
+Participants should receive:
+- An in-app notification.
+- A ticket in My Registrations.
+- Event details.
+- A unique QR code.
+- Ticket status.
+- A clear indication that their ticket is valid for the specific event.
+
+Email notifications may also be sent if SMTP is configured.
+
+Do not claim an email was delivered unless the mail provider confirms it.
+
+### 5.4 QR security
+
+- Generate cryptographically secure random tokens.
+- Store only token hashes in the database.
+- Do not encode email addresses, student IDs, phone numbers or other personal information in the QR code.
+- Associate each ticket with the correct registration and event.
+- Reject revoked, invalid, expired or already-used tickets according to event policy.
+
+---
+
+# SECTION 6 — AUTOMATIC QR SCANNER AND ATTENDANCE VERIFICATION
+
+The scanner must be a real working feature, not a simulated modal.
+
+### 6.1 Who can scan?
+
+- President.
+- Vice President.
+- Core Members with the explicit `can_scan_qr` permission.
+
+The existing maximum of four active QR-scanner-enabled Core Members per club must remain enforced.
+
+President and Vice President do not count towards those four Core Member slots.
+
+### 6.2 Scanner experience
+
+Inside each event dashboard, provide an **Open QR Scanner** option for authorized users.
+
+When opened:
+- Request camera permission.
+- Start the camera.
+- Display a real QR scanning interface.
+- Allow the authorized member to scan a participant's released ticket.
+- Verify the QR automatically through the backend.
+
+Do not require the scanner operator to manually enter participant information.
+
+### 6.3 Automatic verification
+
+On scanning, the backend must verify:
+
+1. The scanner user is authenticated.
+2. The scanner user belongs to the correct club.
+3. The scanner user has `can_scan_qr` permission or an authorized leadership role.
+4. The ticket exists.
+5. The ticket has been released.
+6. The token hash matches.
+7. The ticket belongs to the event being scanned.
+8. The registration is eligible.
+9. The ticket has not been revoked.
+10. Attendance has not already been marked.
+
+If all checks pass:
+- Mark attendance automatically.
+- Persist the attendance record.
+- Record the scanner user and timestamp.
+- Return a successful verification response.
+- Display a clear green success result with participant and event details appropriate for authorized staff.
+
+If verification fails:
+- Do not mark attendance.
+- Return an appropriate reason.
+- Display a clear error result.
+
+Examples:
+- Valid ticket — Attendance marked.
+- Already scanned — Attendance already recorded.
+- Ticket not released.
+- Invalid QR.
+- Wrong event.
+- Ticket revoked.
+- Insufficient scanner permission.
+
+### 6.4 Prevent duplicate attendance
+
+Use database-level uniqueness and transactional verification.
+
+Two scanners scanning the same ticket simultaneously must never produce two attendance records.
+
+The first valid scan should succeed; subsequent scans should return an already-scanned response.
+
+### 6.5 Attendance dashboard
+
+Show:
+- Total confirmed registrations.
+- Tickets released.
+- Tickets not yet released.
+- Total attendees.
+- Not-yet-attended participants.
+- Attendance percentage.
+
+Update the dashboard from persisted backend data.
+
+---
+
+# SECTION 7 — STUDENT DASHBOARD AND MULTI-ROLE SWITCHING
+
+**A user must not lose their Student identity when they become a club President, Vice President or Core Member.**
+
+One person can hold multiple roles across multiple clubs.
+
+### 7.1 Persistent Student role
+
+Every authenticated student must retain access to the Student dashboard.
+
+Being a President or Core Member must not replace the Student role.
+
+The global identity should remain the same, with separate club-scoped memberships and permissions.
+
+Do not create duplicate user accounts for different roles.
+
+### 7.2 Dashboard switcher
+
+Add a clear dashboard switcher in the authenticated navigation.
+
+For example:
+
+- Student Dashboard.
+- Campus Music Club — President.
+- Coding Club — Core Member.
+- Robotics Club — Vice President.
+
+Display only dashboards the authenticated user is authorized to access.
+
+When the user switches:
+- Keep the same authenticated account.
+- Change the active dashboard context.
+- Load the correct club-specific data.
+- Apply the correct permissions.
+- Preserve the user's other roles.
+- Do not log the user out.
+- Do not create a separate session or duplicate identity.
+
+### 7.3 Example scenario
+
+A student is:
+- A normal student at the university.
+- President of the Music Club.
+- Core Member of the Coding Club.
+
+That student should be able to:
+1. Open the Student dashboard.
+2. Switch to the Music Club President dashboard.
+3. Manage Music Club activities and events.
+4. Switch to the Coding Club Core Member dashboard.
+5. Use only the permissions assigned in the Coding Club.
+6. Return to the Student dashboard.
+
+All three contexts must work using the same account.
+
+### 7.4 Security
+
+- Never trust a frontend-selected role.
+- Validate the requested club context on every protected API request.
+- Verify membership and permissions server-side.
+- Prevent users from accessing another club's data by changing a URL or request parameter.
+- Keep the global Super Admin role separate from club-specific roles.
+- Preserve the existing role and permission model rather than introducing conflicting role fields.
+
+---
+
+# SECTION 8 — ACTIVE EVENTS ON THE STUDENT DASHBOARD
+
+Improve the Student dashboard with a clearly visible **Active Events** section.
+
+Display:
+- Currently active events.
+- Upcoming events accepting registrations.
+- Registration status.
+- Club name.
+- Event date.
+- Venue.
+- Registration availability.
+- Ticket status where relevant.
+
+Each event card should be clickable.
+
+When the student clicks an event:
+- Navigate to its event details page.
+- Show the event description and registration information.
+- Show the published registration form if registration is open.
+- Show registration confirmation if already registered.
+- Show the ticket and QR code only after ticket release.
+
+### Dashboard data requirements
+
+- Fetch active events from the backend.
+- Use server-side filtering and pagination.
+- Do not load every event into the browser.
+- Avoid duplicate API calls.
+- Use secure caching and correct invalidation.
+- Update the UI after registration or ticket release.
+- Handle loading, empty, error and retry states.
+
+The dashboard must show real database data, not static example cards.
+
+---
+
+# SECTION 9 — PHASE 5: POST-EVENT REPORTS
+
+Once the Phase 1–4 workflows are working, implement post-event reporting.
+
+Authorized club leadership can submit an event completion report containing:
+
+- Event summary.
+- Objectives.
+- Actual event date.
+- Total registrations.
+- Total attendance.
+- Participation summary.
+- Event outcomes.
+- Highlights.
+- Feedback and observations.
+- Supporting evidence or documents, if secure file storage is configured.
+
+Report states:
+- Draft.
+- Submitted.
+- Under review.
+- Changes requested.
+- Approved.
+- Rejected.
+
+Requirements:
+- Validate all fields server-side.
+- Link each report to its event and club.
+- Prevent unauthorized report access.
+- Preserve submission and approval history.
+- Allow corrections and resubmission.
+- Record who submitted, reviewed and modified each report.
+
+---
+
+# SECTION 10 — PHASE 5: FINANCIAL MANAGEMENT
+
+Create a financial management module linked to each event and club.
+
+### 10.1 Income
+
+Allow authorized users to record:
+- Sponsorship contributions.
+- Institutional funding.
+- Event collections.
+- Other permitted income.
+
+### 10.2 Expenses
+
+Allow authorized users to record:
+- Expense category.
+- Description.
+- Amount.
+- Transaction date.
+- Vendor or recipient.
+- Supporting receipt or bill, if storage is configured.
+
+### 10.3 Financial calculations
+
+Calculate:
+- Total income.
+- Total expenses.
+- Remaining balance.
+- Event-wise financial summary.
+- Club-wise financial summary.
+
+Store monetary values using integer minor units (paise for INR), not floating-point arithmetic.
+
+Do not build a payment gateway or pretend that manually entered financial entries are verified bank transactions.
+
+### 10.4 Permissions
+
+- President and Vice President can access their own club's finance records.
+- Other members need explicit permissions.
+- Super Admin can access institution-wide financial summaries.
+- Students cannot access private financial information.
+- All financial modifications must be auditable.
+
+---
+
+# SECTION 11 — SUPER ADMIN INSTITUTIONAL DASHBOARD
+
+Create a complete institution-wide dashboard.
+
+### Overview
+- Total clubs.
+- Active clubs.
+- Total events.
+- Upcoming events.
+- Completed events.
+- Total registrations.
+- Total attendance.
+- Pending reports.
+- Reports awaiting approval.
+
+### Club overview
+- Club profile.
+- President and Vice President.
+- Active Core Members.
+- Club activities.
+- Upcoming and completed events.
+- Follower count.
+- Instagram profile.
+
+### Event analytics
+- Event-wise registrations.
+- Ticket release statistics.
+- Attendance statistics.
+- Attendance percentage.
+- Event reports.
+- Financial summaries.
+
+### Finance overview
+- Total institutional income recorded.
+- Total recorded expenses.
+- Club-wise financial summaries.
+- Event-wise financial summaries.
+- Pending financial reviews, if configured.
+
+### Administrative actions
+- Review reports.
+- Approve reports.
+- Reject reports with reasons.
+- Request corrections.
+- View audit history.
+- Export permitted reports.
+
+All institution-wide operations must be restricted to Super Admin permissions.
+
+---
+
+# SECTION 12 — API ENDPOINTS AND COMPLETE END-TO-END VERIFICATION
+
+Inspect the existing Express routes first.
+
+Do not blindly create duplicate endpoints.
+
+Update the API documentation to include every existing and new endpoint.
+
+At minimum, verify the following endpoint groups:
+
+| Endpoint group | Required functionality |
+|---|---|
+| `/api/v1/auth/*` | Authentication and user context |
+| `/api/v1/users/*` | Student profile and role context |
+| `/api/v1/clubs/*` | Club profiles, team, Instagram and permissions |
+| `/api/v1/events/*` | Event creation, publishing and management |
+| `/api/v1/forms/*` | Form creation, editing and publishing |
+| `/api/v1/registrations/*` | Registration and participant responses |
+| `/api/v1/tickets/*` | Ticket release and participant ticket retrieval |
+| `/api/v1/attendance/*` | QR verification and attendance |
+| `/api/v1/reports/*` | Post-event reports and review |
+| `/api/v1/finance/*` | Income, expenses and financial summaries |
+| `/api/v1/admin/*` | Institutional administration and analytics |
+
+These are endpoint groups, not permission to invent route names. Document the actual routes implemented in the repository, including methods, request schemas, response schemas and authentication requirements.
+
+### Required endpoint tests
+
+For every endpoint, verify:
+- Correct HTTP method.
+- Correct authentication requirement.
+- Correct role and permission checks.
+- Valid request handling.
+- Invalid request handling.
+- Database persistence.
+- Correct response status.
+- Error handling.
+- Cross-club access prevention.
+- Duplicate request handling where applicable.
+
+A route returning HTTP 200 is not sufficient evidence that its business operation works.
+
+Test the actual database changes and the user-facing result.
+
+---
+
+# SECTION 13 — TEST DATABASE AND TEST ACCOUNTS
+
+Create a safe, repeatable testing setup using real Supabase Auth users and PostgreSQL records.
+
+I specifically need multiple test accounts to verify the different roles and workflows.
+
+### 13.1 Create test identities
+
+Prepare test identities for:
+
+1. Super Admin.
+2. Student with no club role.
+3. President of Club A.
+4. Vice President of Club A.
+5. Core Member of Club A with scanner permission.
+6. Core Member of Club A without scanner permission.
+7. President of Club B.
+8. Student who is also President of one club and Core Member of another.
+9. Participant registered for an event.
+10. Participant whose ticket has not yet been released.
+
+Use clearly documented institutional-test email addresses, for example:
+
+- `superadmin.test@campusverse.test`
+- `student.test@campusverse.test`
+- `president.clubA.test@campusverse.test`
+- `vicepresident.clubA.test@campusverse.test`
+- `coremember.clubA.test@campusverse.test`
+- `president.clubB.test@campusverse.test`
+- `multirole.test@campusverse.test`
+- `participant.test@campusverse.test`
+
+These are example test identities. Configure a valid test email domain or use the email provider's supported test-account mechanism. Do not assume `.test` addresses can receive real emails.
+
+### 13.2 Password handling
+
+I need usable test credentials, including passwords, for the testing environment.
+
+Implement this securely:
+
+- Create users through Supabase Auth Admin APIs on the server.
+- Generate strong, unique test passwords.
+- Store passwords only in local development secrets or a protected test-credentials file excluded from Git.
+- Provide a secure way for the developer to retrieve the generated test credentials.
+- Document which account belongs to which role.
+- Never store plaintext passwords in PostgreSQL application tables.
+- Never return passwords from ordinary application APIs.
+- Never expose the Supabase service-role key to the browser.
+- Never put actual passwords in README files, committed seed scripts or `.env.example`.
+- Do not create predictable shared production passwords.
+- Disable test-account provisioning in production.
+- Make test-user creation idempotent and prevent duplicate accounts.
+- Clearly identify all test users as non-production accounts.
+
+If real institutional email delivery is required, configure a suitable SMTP provider. Do not claim invitations or emails are delivered merely because an API request succeeded.
+
+### 13.3 Seed realistic test data
+
+Create:
+- At least two test clubs.
+- Club leadership and Core Member memberships.
+- Test followers.
+- Active and upcoming events.
+- Draft and published forms.
+- Test registrations.
+- Released and unreleased tickets.
+- Attendance records.
+- Post-event reports.
+- Financial entries.
+
+The seed operation must be repeatable and must not overwrite real users or production data.
+
+Clearly document how to reset only the test data.
+
+---
+
+# SECTION 14 — COMPLETE END-TO-END TEST SCENARIOS
+
+Do not stop after unit tests.
+
+Run complete user journeys.
+
+### Scenario A — Club setup
+1. Login as Super Admin.
+2. Create a club.
+3. Assign President and Vice President.
+4. Login as President.
+5. Add the club Instagram URL.
+6. Invite a Core Member.
+7. Assign scanner permission.
+8. Verify the club dashboard.
+
+### Scenario B — Event and form publishing
+1. Login as President.
+2. Create an event.
+3. Create its registration form.
+4. Save the form as a draft.
+5. Publish the form.
+6. Verify that the public registration page is accessible.
+7. Login as a student.
+8. Open the event.
+9. Submit the registration form.
+10. Verify that the registration appears in the club dashboard and database.
+
+### Scenario C — Ticket release
+1. Register multiple test participants.
+2. Verify that their registration status is confirmed.
+3. Verify that tickets remain unreleased.
+4. Confirm that participants cannot access a usable QR ticket.
+5. Login as an authorized club leader.
+6. Open Ticket Management.
+7. Click Release Tickets.
+8. Confirm the action.
+9. Verify that ticket records are created.
+10. Verify that participants can now view their unique tickets.
+
+### Scenario D — QR scanning
+1. Login as a Core Member with scanner permission.
+2. Open the event scanner.
+3. Grant camera access.
+4. Scan a real released ticket.
+5. Verify automatic backend validation.
+6. Verify attendance is recorded.
+7. Scan the same ticket again.
+8. Verify that duplicate attendance is rejected.
+9. Test an unreleased ticket.
+10. Test an invalid QR code.
+11. Test a ticket belonging to another event.
+12. Test a user without scanner permission.
+
+### Scenario E — Multi-role account
+1. Login as the multi-role student.
+2. Open the Student dashboard.
+3. Switch to Club A President dashboard.
+4. Verify leadership access.
+5. Switch to Club B Core Member dashboard.
+6. Verify only assigned Core Member permissions.
+7. Return to Student dashboard.
+8. Verify that the same authenticated account and profile remain active.
+
+### Scenario F — Reports and finance
+1. Complete a test event.
+2. Submit its post-event report.
+3. Record income and expenses.
+4. Verify the calculated balance.
+5. Login as Super Admin.
+6. Review the event report.
+7. Approve or request corrections.
+8. Verify institution-wide analytics.
+
+### Scenario G — Authorization and isolation
+Test unauthorized access to:
+- Another club's event management.
+- Another club's registrations.
+- Another club's tickets.
+- Another club's financial data.
+- Super Admin operations.
+- QR verification without scanner permission.
+
+All unauthorized operations must be rejected by the backend.
+
+---
+
+# SECTION 15 — PERFORMANCE AND RELIABILITY
+
+Preserve and improve the performance requirements from Phase 4.
+
+Audit:
+- Slow dashboard loading.
+- Duplicate API calls.
+- Unnecessary database queries.
+- N+1 query patterns.
+- Large frontend bundles.
+- Unnecessary React renders.
+- Slow event and registration retrieval.
+- Slow form loading.
+- Scanner startup and verification latency.
+
+Requirements:
+- Use indexed, paginated server-side queries.
+- Select only required database columns.
+- Use efficient joins.
+- Avoid loading all registrations or events into the browser.
+- Use TanStack Query with appropriate caching and invalidation.
+- Never cache authorization decisions or sensitive QR verification responses.
+- Use lazy loading for the scanner and form builder.
+- Preserve transaction safety for registration, ticket release and attendance.
+- Add request IDs and safe latency logging.
+- Do not log passwords, access tokens, QR secrets or personal registration answers.
+
+Measure before and after performance improvements using realistic test data.
+
+Targets are engineering goals, not guarantees:
+- LCP below 2.5 seconds.
+- INP below 200 ms.
+- CLS below 0.1.
+- Typical API read p95 below 500 ms.
+
+Do not sacrifice correctness or security to meet performance targets.
+
+---
+
+# SECTION 16 — SECURITY AND DATA INTEGRITY
+
+Conduct a focused security review of the complete system.
+
+Verify:
+- Supabase JWT validation.
+- Correct issuer and audience validation where applicable.
+- Server-side role and permission enforcement.
+- RLS policies for all sensitive tables.
+- Restricted database runtime role.
+- No service-role key in frontend bundles.
+- No plaintext passwords or QR tokens in application tables.
+- Secure invitation and token handling.
+- Input validation with Zod.
+- SQL injection protection.
+- XSS protection.
+- CSRF protection where applicable.
+- Rate limiting on sensitive endpoints.
+- Safe CSV exports against formula injection.
+- Audit logs for privileged operations.
+- Secure file uploads if storage is implemented.
+- Proper error handling without leaking secrets or internal stack traces.
+
+Never solve an authorization problem by disabling RLS or removing backend checks.
+
+---
+
+# SECTION 17 — REQUIRED DOCUMENTATION
+
+Update the main README and create a complete operational documentation set.
+
+Include:
+
+1. Full system architecture.
+2. Final project directory structure.
+3. Database schema and relationships.
+4. All database migrations.
+5. All API endpoints.
+6. HTTP methods and request/response examples.
+7. Authentication and role-switching flow.
+8. Club creation and leadership assignment.
+9. Core Member invitation and permissions.
+10. Instagram profile configuration.
+11. Event creation and publishing.
+12. Form creation and publication.
+13. Registration workflow.
+14. Ticket release workflow.
+15. QR scanner setup and troubleshooting.
+16. Attendance verification.
+17. Post-event reporting.
+18. Financial management.
+19. Super Admin operations.
+20. Test account setup and credential retrieval.
+21. Environment variables and secrets configuration.
+22. SMTP configuration.
+23. Local development setup.
+24. Deployment instructions.
+25. Database backup and recovery guidance.
+26. Common errors and troubleshooting.
+
+For every credential, explain:
+- Where to obtain it.
+- Where to configure it.
+- Whether it belongs in frontend or backend.
+- Whether it must remain secret.
+- How to rotate it.
+
+Use placeholders in documentation. Never commit real passwords, API keys or database credentials.
+
+---
+
+# SECTION 18 — FINAL ACCEPTANCE CRITERIA
+
+Phase 5 is complete only when all of the following are demonstrated:
+
+- [ ] Phases 1–4 have been audited and their incomplete functionality fixed.
+- [ ] Managed application database readiness returns HTTP 200.
+- [ ] No accidental demo-mode fallback exists.
+- [ ] Student authentication works.
+- [ ] Super Admin can manage clubs.
+- [ ] President and Vice President can manage their club.
+- [ ] Core Member permissions work correctly.
+- [ ] Multi-role users can switch dashboards without losing their Student identity.
+- [ ] Club Instagram links can be managed by authorized leaders.
+- [ ] Events can be created and published.
+- [ ] Registration forms can be created, published and submitted.
+- [ ] Participant registrations persist in PostgreSQL.
+- [ ] Tickets are not available before release.
+- [ ] Authorized leaders can release tickets.
+- [ ] Participants receive their tickets only after release.
+- [ ] Real QR camera scanning works.
+- [ ] QR verification automatically records attendance.
+- [ ] Duplicate attendance is prevented.
+- [ ] Unauthorized scanners are rejected.
+- [ ] Active Events appears on the Student dashboard.
+- [ ] Clicking an event opens its correct details page.
+- [ ] Post-event reports can be submitted and reviewed.
+- [ ] Financial entries and calculations work.
+- [ ] Super Admin analytics reflect actual database data.
+- [ ] Test accounts and test data can be provisioned safely.
+- [ ] Every documented endpoint has been tested.
+- [ ] Critical end-to-end tests pass.
+- [ ] Performance measurements are recorded.
+- [ ] Security and authorization tests pass.
+- [ ] Documentation is complete and accurate.
+
+---
+
+# SECTION 19 — FINAL IMPLEMENTATION REPORT
+
+When implementation is finished, provide a factual report containing:
+
+1. What was already working.
+2. What was broken.
+3. What was fixed.
+4. What Phase 5 features were implemented.
+5. Database changes and migrations.
+6. New and modified API endpoints.
+7. Test account emails and the secure location from which their generated passwords can be retrieved.
+8. Test commands executed and actual results.
+9. End-to-end scenarios successfully verified.
+10. QR camera scanning verification results.
+11. Performance measurements before and after.
+12. Remaining limitations or blockers.
+13. Exact deployment and configuration steps.
+
+For every major feature, distinguish between:
+- Implemented.
+- Unit-tested.
+- API-tested.
+- Database-tested.
+- End-to-end verified.
+
+Do not label a feature fully complete just because its UI exists or its API returns HTTP 200.
+
+## FINAL INSTRUCTION
+
+Work systematically.
+
+**First repair and verify Phases 1–4. Then implement Phase 5. Finally run the complete integration and security test suite.**
+
+Preserve all working existing features and architecture. Do not remove existing functionality to make new tests pass. Do not use mock responses to claim real database integration. Do not hardcode test passwords or production secrets.
+
+The final product must work as one connected platform: a student can discover an event, register through a published form, receive a ticket only when the club releases it, have their ticket automatically verified at the event entrance, and later see the event reflected in club reports and institutional analytics.
+
+**Build and verify the complete working system—not just the screens.**

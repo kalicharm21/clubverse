@@ -1,0 +1,48 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1795454301314,
+      "tag": "0000_fancy_korvac",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1795534334742,
+      "tag": "0001_windy_bedlam",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795599221064,
+      "tag": "0002_phase4_leadership_events_perf",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1795700000000,
+      "tag": "0003_phase5_completion",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795800000000,
+      "tag": "0004_schema_drift_reconciliation",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795900000000,
+      "tag": "0005_invitation_schema_reconciliation",
+      "breakpoints": true
+    }
+  ]
+}

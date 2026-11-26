@@ -1,0 +1,8 @@
+export {
+  API_PREFIX,
+  CLUB_CATEGORIES,
+  CORE_MEMBER_PERMISSIONS,
+  EVENT_CATEGORIES,
+  MAX_FOLLOWED_CLUBS,
+  PERMISSION_LABELS,
+} from '../../shared/constants/permissions.ts';
