@@ -10,11 +10,13 @@ interface CameraDevice {
 interface CameraQrScannerProps {
   onScanToken: (token: string) => void;
   disabled?: boolean;
+  autoStart?: boolean;
 }
 
 export const CameraQrScanner: React.FC<CameraQrScannerProps> = ({
   onScanToken,
   disabled = false,
+  autoStart = true,
 }) => {
   const reactId = useId();
   const containerId = `cv-qr-reader-${reactId.replace(/[^a-zA-Z0-9_-]/g, '')}`;
@@ -28,8 +30,8 @@ export const CameraQrScanner: React.FC<CameraQrScannerProps> = ({
   const scannerRef = useRef<{
     stop: () => Promise<void>;
     clear: () => void;
-    isScanning?: boolean;
   } | null>(null);
+  const startingRef = useRef(false);
   const lastScanRef = useRef<{token: string; at: number}>({token: '', at: 0});
   const onScanRef = useRef(onScanToken);
 
@@ -55,78 +57,112 @@ export const CameraQrScanner: React.FC<CameraQrScannerProps> = ({
     setScanning(false);
   }, []);
 
-  useEffect(() => {
-    return () => {
-      void stopScanner();
-    };
-  }, [stopScanner]);
+  const startScanner = useCallback(
+    async (overrideCameraId?: string) => {
+      if (startingRef.current) return;
+      startingRef.current = true;
+      setErrorMsg(null);
+      setStarting(true);
 
-  const startScanner = async (overrideCameraId?: string) => {
-    setErrorMsg(null);
-    setStarting(true);
-    try {
-      await stopScanner();
-      // Dynamic import keeps html5-qrcode out of initial bundle until scanner is started
-      const {Html5Qrcode} = await import('html5-qrcode');
-      let targetCameraId = overrideCameraId || selectedCameraId;
-      if (!targetCameraId) {
-        const listed = await Html5Qrcode.getCameras().catch(() => []);
-        if (listed.length > 0) {
-          setCameras(listed);
-          const backCam = listed.find((c) => /back|rear|environment/i.test(c.label));
-          targetCameraId = backCam?.id || listed[0].id;
-          setSelectedCameraId(targetCameraId);
+      try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error(
+            'Camera API unavailable. Ensure the app is loaded over HTTPS or localhost.',
+          );
         }
-      }
 
-      const instance = new Html5Qrcode(containerId);
-      scannerRef.current = instance;
+        await stopScanner();
+        const {Html5Qrcode} = await import('html5-qrcode');
 
-      const cameraConfig: string | MediaTrackConstraints = targetCameraId
-        ? targetCameraId
-        : {facingMode: 'environment'};
+        let targetCameraId = overrideCameraId || selectedCameraId;
+        if (!targetCameraId) {
+          const listed = await Html5Qrcode.getCameras().catch(() => []);
+          if (listed.length > 0) {
+            setCameras(listed);
+            const backCam = listed.find((c) => /back|rear|environment/i.test(c.label));
+            targetCameraId = backCam?.id || listed[0].id;
+            setSelectedCameraId(targetCameraId);
+          }
+        }
 
-      await instance.start(
-        cameraConfig,
-        {
+        const instance = new Html5Qrcode(containerId, {verbose: false});
+        scannerRef.current = instance;
+
+        const scanConfig = {
           fps: 10,
           qrbox: {width: 220, height: 220},
-          aspectRatio: 1.333,
-        },
-        (decodedText) => {
+        };
+
+        const onDecoded = (decodedText: string) => {
           const trimmed = decodedText.trim();
           if (!trimmed) return;
           const now = Date.now();
-          if (lastScanRef.current.token === trimmed && now - lastScanRef.current.at < 2000) {
+          if (lastScanRef.current.token === trimmed && now - lastScanRef.current.at < 3000) {
             return;
           }
           lastScanRef.current = {token: trimmed, at: now};
           onScanRef.current(trimmed);
-        },
-        () => {
-          // Per-frame no-QR decode callback (expected during idle aiming)
-        },
-      );
+        };
 
-      setScanning(true);
-    } catch (err) {
-      await stopScanner();
-      const raw = err instanceof Error ? err.message : 'Unable to start device camera';
-      if (/permission|notallowed|denied/i.test(raw)) {
-        setErrorMsg(
-          'Camera permission was denied. Allow browser camera access or use the manual QR token box below.',
-        );
-      } else if (/notfound|no camera|requested device not found/i.test(raw)) {
-        setErrorMsg(
-          'No active camera was detected on this device. Use the manual QR token entry or participant fallback below.',
-        );
-      } else {
-        setErrorMsg(`Camera scanner unavailable (${raw}). Manual QR verification remains ready.`);
+        const onFrameError = () => {
+          // Expected when no QR code is in frame
+        };
+
+        const candidates: Array<string | MediaTrackConstraints> = targetCameraId
+          ? [targetCameraId, {facingMode: 'environment'}, {facingMode: 'user'}]
+          : [{facingMode: 'environment'}, {facingMode: 'user'}];
+
+        let started = false;
+        let lastErr: unknown = null;
+        for (const candidate of candidates) {
+          try {
+            await instance.start(candidate, scanConfig, onDecoded, onFrameError);
+            started = true;
+            break;
+          } catch (err) {
+            lastErr = err;
+          }
+        }
+
+        if (!started) {
+          throw lastErr instanceof Error ? lastErr : new Error('Unable to open video stream');
+        }
+
+        setScanning(true);
+      } catch (err) {
+        await stopScanner();
+        const raw = err instanceof Error ? err.message : 'Unable to start device camera';
+        if (/permission|notallowed|denied/i.test(raw)) {
+          setErrorMsg(
+            'Camera permission was denied. Allow camera access in browser site settings and click Retry.',
+          );
+        } else if (/notreadable|in use|could not start video source/i.test(raw)) {
+          setErrorMsg(
+            'Camera is busy in another app or tab (such as Google Meet/Zoom). Close that tab and click Retry.',
+          );
+        } else if (/notfound|no camera|requested device not found/i.test(raw)) {
+          setErrorMsg(
+            'No active camera was detected on this device. Use the manual QR token entry below.',
+          );
+        } else {
+          setErrorMsg(`Camera scanner unavailable (${raw}). Manual QR verification remains ready.`);
+        }
+      } finally {
+        startingRef.current = false;
+        setStarting(false);
       }
-    } finally {
-      setStarting(false);
+    },
+    [containerId, selectedCameraId, stopScanner],
+  );
+
+  useEffect(() => {
+    if (autoStart && !disabled) {
+      void startScanner();
     }
-  };
+    return () => {
+      void stopScanner();
+    };
+  }, [autoStart, disabled, startScanner, stopScanner]);
 
   return (
     <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
@@ -176,10 +212,11 @@ export const CameraQrScanner: React.FC<CameraQrScannerProps> = ({
         </div>
       </div>
 
+      {/* Keep non-zero width even before scanning=true so html5-qrcode measures valid dimensions */}
       <div
         id={containerId}
-        className={`overflow-hidden rounded-lg border border-slate-200 bg-slate-900 ${
-          scanning ? 'min-h-[220px]' : 'hidden'
+        className={`w-full overflow-hidden rounded-lg border border-slate-200 bg-slate-900 transition-all ${
+          scanning ? 'min-h-[240px] opacity-100' : 'h-0 border-0 opacity-0 pointer-events-none'
         }`}
       />
 
