@@ -97,7 +97,7 @@ export const AttendancePage: React.FC = () => {
             reason: payload.reason,
           })
         : apiClient.scanAttendance(selectedEventId, payload),
-    onSuccess: async (record) => {
+    onSuccess: (record) => {
       setScanResult({
         ok: true,
         message: `Checked in ${record.studentName} (${record.qrToken}) via ${
@@ -107,11 +107,31 @@ export const AttendancePage: React.FC = () => {
       setQrInput('');
       setManualTarget(null);
       setManualReason('');
-      await Promise.all([
-        queryClient.invalidateQueries({queryKey: ['event-attendance', selectedEventId]}),
-        queryClient.invalidateQueries({queryKey: ['event-registrations-gate', selectedEventId]}),
-        queryClient.invalidateQueries({queryKey: ['event-registrations', selectedEventId]}),
-      ]);
+
+      queryClient.setQueryData(
+        ['event-attendance', selectedEventId, ledgerPage, debouncedLedgerSearch],
+        (old: any) => {
+          if (!old) return old;
+          const nextAttended = (old.summary?.attendedCount ?? old.attendedCount ?? 0) + 1;
+          const confirmed = old.summary?.confirmedCount ?? old.registeredCount ?? nextAttended;
+          return {
+            ...old,
+            attendedCount: nextAttended,
+            records: [record, ...(old.records || [])],
+            summary: old.summary
+              ? {
+                  ...old.summary,
+                  attendedCount: nextAttended,
+                  remainingCount: Math.max(0, confirmed - nextAttended),
+                  attendancePercentage:
+                    confirmed > 0 ? Math.min(100, Math.round((nextAttended / confirmed) * 100)) : 0,
+                }
+              : old.summary,
+          };
+        },
+      );
+
+      void queryClient.invalidateQueries({queryKey: ['event-registrations-gate', selectedEventId]});
       toast.success('Attendance recorded', `${record.studentName} verified`);
     },
     onError: (err) => {
@@ -281,7 +301,11 @@ export const AttendancePage: React.FC = () => {
           {scannerOpen && (
             <CameraQrScanner
               disabled={!selectedEventId || scanMutation.isPending}
-              onScanToken={(token) => scanMutation.mutate({qrToken: token, method: 'qr_scan'})}
+              onScanToken={(token) => {
+                if (!scanMutation.isPending) {
+                  scanMutation.mutate({qrToken: token, method: 'qr_scan'});
+                }
+              }}
             />
           )}
 
